@@ -28,7 +28,7 @@ export default function FocusMatrixApp() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <Header />
-      <main className="flex-1 px-4 py-3 sm:px-6 lg:px-8">
+      <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8">
         {activeView === 'capture' && <CaptureView />}
         {activeView === 'decide' && <DecideView />}
         {activeView === 'focus' && <FocusView />}

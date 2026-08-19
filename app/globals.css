@@ -30,6 +30,13 @@
   --scrollbar-thumb: oklch(0.8 0.008 260);
   --scrollbar-thumb-hover: oklch(0.6 0.015 260);
   --scrollbar-track: transparent;
+
+  /* Quadrant accents — used sparingly (dots, hairlines, icons) so the
+     matrix is recognisable at a glance without becoming noisy. */
+  --q-do-first: oklch(0.57 0.19 22);
+  --q-schedule: oklch(0.54 0.14 250);
+  --q-delegate: oklch(0.64 0.14 70);
+  --q-eliminate: oklch(0.58 0.012 260);
 }
 
 .dark {
@@ -57,6 +64,11 @@
   --scrollbar-thumb: oklch(0.35 0.015 260 / 80%);
   --scrollbar-thumb-hover: oklch(0.5 0.02 260);
   --scrollbar-track: transparent;
+
+  --q-do-first: oklch(0.7 0.17 22);
+  --q-schedule: oklch(0.7 0.12 250);
+  --q-delegate: oklch(0.78 0.13 70);
+  --q-eliminate: oklch(0.6 0.012 260);
 }
 
 @theme inline {
@@ -81,6 +93,10 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-q-do-first: var(--q-do-first);
+  --color-q-schedule: var(--q-schedule);
+  --color-q-delegate: var(--q-delegate);
+  --color-q-eliminate: var(--q-eliminate);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -129,4 +145,61 @@
 
 .dark .card-depth {
   box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.35), 0 0 0 1px oklch(0.3 0.015 260 / 0.4);
+}
+
+/* Consistent keyboard-only focus treatment across custom (non-shadcn) controls */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+/* Small key-cap used to teach shortcuts inline */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1;
+  font-weight: 600;
+}
+
+/* Focus mode at rest: the header recedes with the rest of the page, and
+   returns the moment you reach for it. */
+body.focus-resting header {
+  opacity: 0.06;
+}
+
+body.focus-resting header:hover,
+body.focus-resting header:focus-within {
+  opacity: 1;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise {
+    animation: none;
+  }
 }

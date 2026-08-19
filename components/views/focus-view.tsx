@@ -2,240 +2,280 @@
 
 import React from 'react';
 import { useMatrixStore } from '@/lib/store';
-import { SubTask, Task } from '@/types/matrix';
+import { SubTask, Task, TaskStatus } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
+import { QUADRANTS } from '@/components/quadrants';
+import { useNow, isOverdue } from '@/hooks/use-now';
+import { useIdleReveal } from '@/hooks/use-idle-reveal';
 import confetti from 'canvas-confetti';
-import {
-  Check,
-  FileText,
-  Clock,
-  Circle,
-} from 'lucide-react';
+import { Check, Circle, Inbox, PenLine } from 'lucide-react';
+
+/** Everything that is not the task itself hides while the pointer is still. */
+const VEIL = 'transition-opacity duration-500 motion-reduce:transition-none';
+const veil = (revealed: boolean) =>
+  `${VEIL} ${revealed ? 'opacity-100' : 'pointer-events-none opacity-0'} focus-within:pointer-events-auto focus-within:opacity-100`;
+
+/** Ranks the queue so the top card is always the defensible "next thing". */
+function scoreTask(task: Task, now: number): number {
+  const byQuadrant =
+    task.status === 'do_first' ? 0 : task.status === 'schedule' ? 1000 : task.status === 'delegate' ? 2000 : 3000;
+
+  let byDeadline = 500;
+  if (task.parsedDate) {
+    const diff = new Date(task.parsedDate).getTime() - now;
+    byDeadline = diff < 0 ? -100 : Math.min(diff / (3600 * 1000), 999);
+  }
+  return byQuadrant + byDeadline;
+}
+
+/** High-priority steps float up; everything else keeps the order you dragged it into. */
+function orderSteps(subtasks: SubTask[]): SubTask[] {
+  const weight = (s: SubTask) => (s.priority === 'high' ? 0 : s.priority === 'low' ? 2 : 1);
+  return subtasks
+    .map((s, index) => ({ s, index }))
+    .sort((a, b) => weight(a.s) - weight(b.s) || a.index - b.index)
+    .map(({ s }) => s);
+}
 
 export function FocusView() {
-  const { tasks, setActiveView } = useMatrixStore();
+  const { tasks } = useMatrixStore();
+  const now = useNow();
+  const revealed = useIdleReveal();
 
-  const activeTasks = tasks.filter(
-    (t) => t.completionState === 'pending' && t.status !== 'eliminate' && t.status !== 'inbox'
-  );
+  // Let the header recede with the rest of the page while you work.
+  React.useEffect(() => {
+    document.body.classList.toggle('focus-resting', !revealed);
+    return () => document.body.classList.remove('focus-resting');
+  }, [revealed]);
 
-  const sorted = React.useMemo(() => {
-    const now = Date.now();
-    const score = (t: Task): number => {
-      const sw = t.status === 'do_first' ? 0 : t.status === 'schedule' ? 1000 : t.status === 'delegate' ? 2000 : 3000;
-      let dw = 500;
-      if (t.parsedDate) {
-        const diff = new Date(t.parsedDate).getTime() - now;
-        dw = diff < 0 ? -100 : Math.min(diff / (3600 * 1000), 999);
-      }
-      return sw + dw;
-    };
-    return [...activeTasks].sort((a, b) => score(a) - score(b));
-  }, [activeTasks]);
-
-  const currentTask = sorted[0];
-  const upNext = sorted.slice(1, 4);
-
-  if (!currentTask) {
-    return (
-      <div className="flex flex-col items-center justify-center pt-[22vh] text-center max-w-sm mx-auto">
-        <h3 className="text-sm font-semibold text-foreground">Nothing to focus on right now</h3>
-        <p className="mt-1.5 text-xs text-muted-foreground/60 leading-relaxed">
-          {tasks.some((t) => t.status === 'inbox' && t.completionState === 'pending') ? (
-            <>
-              You have unsorted items in your inbox.{' '}
-              <button
-                onClick={() => setActiveView('decide')}
-                className="font-medium text-foreground underline underline-offset-2"
-              >
-                Sort in Matrix (2)
-              </button>
-            </>
-          ) : (
-            <>
-              Capture a task to get started.{' '}
-              <button
-                onClick={() => setActiveView('capture')}
-                className="font-medium text-foreground underline underline-offset-2"
-              >
-                Capture (1)
-              </button>
-            </>
-          )}
-        </p>
-      </div>
+  const queue = React.useMemo(() => {
+    const active = tasks.filter(
+      (t) => t.completionState === 'pending' && t.status !== 'eliminate' && t.status !== 'inbox'
     );
-  }
+    return [...active].sort((a, b) => scoreTask(a, now) - scoreTask(b, now));
+  }, [tasks, now]);
+
+  const currentTask = queue[0];
+  const upNext = queue.slice(1, 4);
+
+  if (!currentTask) return <FocusEmptyState />;
 
   return (
-    <div className="mx-auto max-w-xl pt-[12vh] pb-24">
-      <FocusCard task={currentTask} />
+    <div className="mx-auto flex min-h-[calc(100vh-7rem)] w-full max-w-2xl flex-col justify-center py-10">
+      <FocusCard key={currentTask.id} task={currentTask} revealed={revealed} />
 
-      {/* Up Next List (Quiet, faded below) */}
       {upNext.length > 0 && (
-        <div className="mt-24 border-t border-border/30 pt-6 opacity-30 hover:opacity-80 transition-opacity">
-          <p className="text-[10px] font-semibold text-muted-foreground mb-2 uppercase tracking-widest">
-            Up Next
-          </p>
-          <div className="space-y-1.5">
-            {upNext.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between text-xs text-muted-foreground py-0.5"
-              >
-                <span className="truncate flex-1">{t.content}</span>
-                {t.parsedDate && (
-                  <span className="text-[10px] text-muted-foreground/50 ml-2">
-                    {formatFriendlyDate(t.parsedDate)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+        <ul className={`mt-16 space-y-1 border-t border-border/30 pt-4 ${veil(revealed)}`}>
+          {upNext.map((t) => (
+            <li key={t.id} className="flex items-center justify-between gap-3 text-xs text-muted-foreground/40">
+              <span className="flex min-w-0 items-center gap-2">
+                <span
+                  className={`size-1 shrink-0 rounded-full ${
+                    QUADRANTS[t.status as Exclude<TaskStatus, 'inbox'>]?.dot ?? 'bg-muted-foreground'
+                  } opacity-60`}
+                />
+                <span className="truncate">{t.content}</span>
+              </span>
+              {t.parsedDate && (
+                <span className="shrink-0 text-[10px]">{formatFriendlyDate(t.parsedDate)}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ──────── The single task on screen ──────── */
+
+function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
+  const { toggleTaskCompletion, toggleSubtask, openTaskDetailModal, openAccountabilityModal } =
+    useMatrixStore();
+
+  const [showNotes, setShowNotes] = React.useState(false);
+
+  const subtasks = React.useMemo(() => task.subtasks ?? [], [task.subtasks]);
+  const ordered = React.useMemo(() => orderSteps(subtasks), [subtasks]);
+  const remaining = ordered.filter((s) => !s.completed);
+  const activeStep = remaining[0];
+
+  const overdue = isOverdue(task.parsedDate, useNow());
+
+  const celebrate = (particleCount: number) => {
+    try {
+      confetti({ particleCount, spread: 55, origin: { y: 0.55 }, ticks: 110, scalar: 0.8 });
+    } catch {
+      /* confetti is decoration — never let it break completion */
+    }
+  };
+
+  const handleDone = () => {
+    if (activeStep) {
+      celebrate(remaining.length === 1 ? 40 : 18);
+      toggleSubtask(task.id, activeStep.id);
+      return;
+    }
+    celebrate(45);
+    toggleTaskCompletion(task.id);
+  };
+
+  return (
+    <div className="animate-rise space-y-7">
+      {/* Deadline and which task this step belongs to */}
+      <div className={`flex min-h-4 items-center gap-3 ${veil(revealed)}`}>
+        {activeStep && (
+          <button
+            onClick={() => openTaskDetailModal(task.id)}
+            className="focus-ring min-w-0 truncate rounded-md text-left text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
+            title="Open task"
+          >
+            {task.content}
+          </button>
+        )}
+        {task.parsedDate && (
+          <span
+            className={`ml-auto shrink-0 text-[11px] ${
+              overdue ? 'font-medium text-q-do-first' : 'text-muted-foreground/50'
+            }`}
+          >
+            {formatFriendlyDate(task.parsedDate)}
+          </span>
+        )}
+      </div>
+
+      {activeStep && (
+        <div className={`flex h-1 gap-1 ${veil(revealed)}`}>
+          {ordered.map((s) => (
+            <span
+              key={s.id}
+              className={`h-full flex-1 rounded-full transition-colors duration-300 ${
+                s.completed ? 'bg-foreground/40' : s.id === activeStep.id ? 'bg-foreground/20' : 'bg-muted'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* The one thing — the only element that never hides */}
+      {activeStep ? (
+        <h1 className="font-heading text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground sm:text-[2.6rem]">
+          {activeStep.content}
+        </h1>
+      ) : (
+        <button
+          onClick={() => openTaskDetailModal(task.id)}
+          className="focus-ring font-heading block w-full text-left text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground transition-colors hover:text-foreground/70 sm:text-[2.6rem]"
+          title="Open task"
+        >
+          {task.content}
+        </button>
+      )}
+
+      <div className={`flex items-center gap-4 ${veil(revealed)}`}>
+        <button
+          onClick={handleDone}
+          className="focus-ring inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-semibold text-background opacity-35 transition-all hover:-translate-y-px hover:opacity-100 active:translate-y-0"
+        >
+          <Check className="size-4 stroke-[2.5]" />
+          Done
+        </button>
+
+        <button
+          onClick={() => openAccountabilityModal(task, 'rescheduled')}
+          className="focus-ring rounded-md text-xs text-muted-foreground/50 transition-colors hover:text-foreground"
+        >
+          I&apos;m stuck
+        </button>
+      </div>
+
+      {subtasks.length > 0 && (
+        <ul className={`space-y-0.5 border-t border-border/30 pt-4 ${veil(revealed)}`}>
+          {ordered.map((sub) => {
+            const isActive = sub.id === activeStep?.id;
+            return (
+              <li key={sub.id}>
+                <button
+                  onClick={() => toggleSubtask(task.id, sub.id)}
+                  className={`focus-ring flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
+                    isActive
+                      ? 'bg-muted/40 font-medium text-foreground/90'
+                      : sub.completed
+                        ? 'text-muted-foreground/30 line-through hover:text-muted-foreground/60'
+                        : 'text-muted-foreground/60 hover:bg-muted/30 hover:text-foreground'
+                  }`}
+                >
+                  {sub.completed ? (
+                    <Check className="size-3 shrink-0 stroke-[2.5] text-muted-foreground/40" />
+                  ) : (
+                    <Circle
+                      className={`size-3 shrink-0 ${isActive ? 'text-foreground/70' : 'text-muted-foreground/30'}`}
+                      strokeWidth={1.5}
+                    />
+                  )}
+                  <span className="truncate">{sub.content}</span>
+                  {sub.priority === 'high' && !sub.completed && (
+                    <span className="ml-auto size-1.5 shrink-0 rounded-full bg-q-do-first opacity-70" />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {task.notes && (
+        <div className={`border-t border-border/30 pt-4 ${veil(revealed)}`}>
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className="focus-ring rounded-md text-xs text-muted-foreground/50 transition-colors hover:text-foreground"
+          >
+            Notes
+          </button>
+
+          {showNotes && (
+            <div className="mt-2 rounded-xl border border-border/40 bg-muted/20 p-3 text-xs leading-relaxed whitespace-pre-wrap text-foreground/70">
+              {task.notes}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-/* ──────── Minimal Monochrome Focus Card ──────── */
+/* ──────── Empty states ──────── */
 
-function FocusCard({ task }: { task: Task }) {
-  const { toggleTaskCompletion, toggleSubtask } = useMatrixStore();
-  const [showNotes, setShowNotes] = React.useState(false);
+function FocusEmptyState() {
+  const { tasks, setActiveView } = useMatrixStore();
 
-  const subtasks = task.subtasks || [];
-  const incompleteSubtasks = subtasks.filter((s) => !s.completed);
-  const completedSubtasks = subtasks.filter((s) => s.completed);
-  const hasSubtasks = subtasks.length > 0;
-  const allSubtasksDone = hasSubtasks ? incompleteSubtasks.length === 0 : true;
+  const unsorted = tasks.filter((t) => t.status === 'inbox' && t.completionState === 'pending').length;
 
-  // Active step (the single next incomplete step to do)
-  const activeStep = incompleteSubtasks[0];
+  let icon = <PenLine className="size-5" />;
+  let title = 'Nothing captured yet';
+  let cta = { label: 'Capture', action: () => setActiveView('capture') };
 
-  const handleCompleteMain = () => {
-    if (!allSubtasksDone) return;
-    try {
-      confetti({ particleCount: 35, spread: 50, origin: { y: 0.5 }, colors: ['#000000', '#ffffff', '#888888'], ticks: 120 });
-    } catch {}
-    toggleTaskCompletion(task.id);
-  };
-
-  const handleCompleteStep = (stepId: string) => {
-    try {
-      confetti({ particleCount: 20, spread: 40, origin: { y: 0.5 }, ticks: 80 });
-    } catch {}
-    toggleSubtask(task.id, stepId);
-  };
+  if (unsorted > 0) {
+    icon = <Inbox className="size-5" />;
+    title = `${unsorted} waiting to be sorted`;
+    cta = { label: 'Sort', action: () => setActiveView('decide') };
+  } else if (tasks.length > 0) {
+    icon = <Check className="size-5" />;
+    title = 'All clear';
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Top Header: Main Task centered, Deadline on the right */}
-      <div className="relative flex items-center justify-center border-b border-border/20 pb-3 min-h-[28px]">
-        {/* Main task centered */}
-        <h2 className="text-sm font-medium text-muted-foreground text-center truncate max-w-sm px-4">
-          {task.content}
-        </h2>
-
-        {/* Deadline on the right */}
-        {task.parsedDate && (
-          <div className="absolute right-0 top-0 flex items-center gap-1 text-[11px] text-muted-foreground/60">
-            <Clock className="size-3" />
-            <span>{formatFriendlyDate(task.parsedDate)}</span>
-          </div>
-        )}
+    <div className="animate-rise mx-auto flex min-h-[calc(100vh-7rem)] max-w-sm flex-col items-center justify-center text-center">
+      <div className="flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-muted/40 text-muted-foreground">
+        {icon}
       </div>
-
-      {/* Main Focus Highlight Area */}
-      {hasSubtasks && activeStep ? (
-        /* If subtasks exist: Highlight the ACTIVE SUBTASK directly */
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <h1 className="text-3xl sm:text-4xl font-semibold text-foreground leading-tight tracking-tight">
-              {activeStep.content}
-            </h1>
-
-            {/* Faded Complete Step button */}
-            <div className="pt-2 flex items-center gap-3">
-              <button
-                onClick={() => handleCompleteStep(activeStep.id)}
-                className="flex items-center gap-2 rounded-xl bg-foreground px-5 py-2 text-xs font-semibold text-background opacity-50 hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
-              >
-                <Check className="size-3.5 stroke-[2.5]" />
-                Complete step
-              </button>
-
-              <span className="text-[11px] text-muted-foreground/50">
-                {completedSubtasks.length + 1} of {subtasks.length}
-              </span>
-            </div>
-          </div>
-
-          {/* Direct clean listing of all subtasks (no dropdowns or arrows needed) */}
-          <div className="pt-4 space-y-1.5 border-t border-border/20">
-            {subtasks.map((sub) => {
-              const isActive = sub.id === activeStep.id;
-              return (
-                <div
-                  key={sub.id}
-                  onClick={() => !sub.completed && toggleSubtask(task.id, sub.id)}
-                  className={`flex items-center gap-2 text-xs py-1 px-1.5 rounded-lg transition-colors cursor-pointer ${
-                    isActive
-                      ? 'font-semibold text-foreground bg-muted/40'
-                      : sub.completed
-                      ? 'text-muted-foreground/30 line-through'
-                      : 'text-muted-foreground/60 hover:text-foreground'
-                  }`}
-                >
-                  {sub.completed ? (
-                    <Check className="size-3 text-muted-foreground/50 stroke-[2.5]" />
-                  ) : (
-                    <Circle className={`size-3 ${isActive ? 'text-foreground' : 'text-muted-foreground/40'}`} strokeWidth={1.5} />
-                  )}
-                  <span className="truncate">{sub.content}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        /* If NO subtasks or all steps done: Main task is highlighted */
-        <div className="space-y-6">
-          <h1 className="text-3xl sm:text-4xl font-semibold text-foreground leading-tight tracking-tight">
-            {task.content}
-          </h1>
-
-          {/* Faded Complete Task button */}
-          <div className="pt-2 flex items-center gap-3">
-            <button
-              onClick={handleCompleteMain}
-              className="flex items-center gap-2 rounded-xl bg-foreground px-5 py-2.5 text-xs font-semibold text-background opacity-50 hover:opacity-100 transition-opacity cursor-pointer shadow-xs"
-            >
-              <Check className="size-3.5 stroke-[2.5]" />
-              Mark complete
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Task Notes Section */}
-      {task.notes && (
-        <div className="border-t border-border/20 pt-4">
-          <button
-            onClick={() => setShowNotes(!showNotes)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-foreground transition-colors"
-          >
-            <FileText className="size-3" />
-            <span>{showNotes ? 'Hide notes' : 'Notes'}</span>
-          </button>
-
-          {showNotes && (
-            <div className="mt-2 rounded-xl bg-muted/20 p-3 text-xs text-foreground/80 leading-relaxed border border-border/30 whitespace-pre-wrap">
-              {task.notes}
-            </div>
-          )}
-        </div>
-      )}
+      <h2 className="font-heading mt-4 text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+      <button
+        onClick={cta.action}
+        className="focus-ring mt-5 rounded-xl bg-foreground px-4 py-2 text-xs font-semibold text-background transition-transform hover:-translate-y-px"
+      >
+        {cta.label}
+      </button>
     </div>
   );
 }

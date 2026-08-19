@@ -12,13 +12,16 @@ interface MatrixState {
   isHydrated: boolean;
   activeView: AppView;
   activeModalTaskId: string | null;
-  initialCaptureInput: string;
+  /** Live text in the Capture field. Held here so a keystroke typed anywhere
+   *  in the app can land in it without a copy-into-local-state round trip. */
+  captureDraft: string;
   accountabilityModalTask: Task | null;
   accountabilityModalResolutionDefault?: 'rescheduled' | 'eliminated' | 'marked_failed';
 
   hydrate: () => Promise<void>;
   setActiveView: (view: AppView) => void;
-  setInitialCaptureInput: (val: string) => void;
+  setCaptureDraft: (val: string) => void;
+  appendCaptureDraft: (char: string) => void;
   openTaskDetailModal: (taskId: string) => void;
   closeTaskDetailModal: () => void;
 
@@ -72,7 +75,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   isHydrated: false,
   activeView: 'focus',
   activeModalTaskId: null,
-  initialCaptureInput: '',
+  captureDraft: '',
   accountabilityModalTask: null,
   accountabilityModalResolutionDefault: 'rescheduled',
 
@@ -93,15 +96,19 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
         tasks: sanitizedTasks,
         logs: storedLogs || [],
         isHydrated: true,
+        // Land where the user actually has something to do: an empty app opens
+        // on the blank page you can type into, otherwise straight into Focus.
+        activeView: sanitizedTasks.length === 0 ? 'capture' : 'focus',
       });
     } catch (err) {
       console.error('Hydration error:', err);
-      setStore({ tasks: [], logs: [], isHydrated: true });
+      setStore({ tasks: [], logs: [], isHydrated: true, activeView: 'capture' });
     }
   },
 
   setActiveView: (view) => setStore({ activeView: view }),
-  setInitialCaptureInput: (val) => setStore({ initialCaptureInput: val }),
+  setCaptureDraft: (val) => setStore({ captureDraft: val }),
+  appendCaptureDraft: (char) => setStore({ captureDraft: getStore().captureDraft + char }),
   openTaskDetailModal: (taskId) => setStore({ activeModalTaskId: taskId }),
   closeTaskDetailModal: () => setStore({ activeModalTaskId: null }),
 

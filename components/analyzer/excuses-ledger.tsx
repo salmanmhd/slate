@@ -4,7 +4,7 @@ import React from 'react';
 import { AccountabilityLog, BlockerCategory } from '@/types/matrix';
 import { BLOCKER_CATEGORIES } from '@/lib/constants';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
-import { Search, Download, Calendar, FileSpreadsheet } from 'lucide-react';
+import { Search, FileSpreadsheet } from 'lucide-react';
 
 interface ExcusesLedgerProps {
   logs: AccountabilityLog[];
@@ -43,23 +43,23 @@ export function ExcusesLedger({ logs }: ExcusesLedgerProps) {
 
   if (logs.length === 0) {
     return (
-      <div className="rounded-xl border border-border/50 bg-card/30 p-8 text-center">
-        <p className="text-xs text-muted-foreground">No accountability logs yet.</p>
+      <div className="card-depth rounded-2xl border border-border/80 bg-card p-8 text-center">
+        <p className="text-xs text-muted-foreground">No blockers logged</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card/30">
+    <div className="card-depth rounded-2xl border border-border/80 bg-card">
       {/* Header */}
-      <div className="flex flex-col gap-3 border-b border-border/40 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Accountability Ledger</h3>
-          <p className="text-[11px] text-muted-foreground">{logs.length} entries</p>
+      <div className="flex flex-col gap-3 border-b border-border/50 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-xs font-semibold text-foreground">Blockers</h3>
+          <span className="text-[11px] tabular-nums text-muted-foreground/70">{logs.length}</span>
         </div>
         <button
           onClick={exportToCSV}
-          className="flex items-center gap-1.5 rounded-md border border-border/50 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors self-start"
+          className="focus-ring flex items-center gap-1.5 self-start rounded-lg border border-border/60 px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
         >
           <FileSpreadsheet className="size-3" />
           Export CSV
@@ -67,7 +67,7 @@ export function ExcusesLedger({ logs }: ExcusesLedgerProps) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-2 border-b border-border/40 px-5 py-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 border-b border-border/50 px-5 py-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground/40" />
           <input
@@ -107,13 +107,13 @@ export function ExcusesLedger({ logs }: ExcusesLedgerProps) {
               const meta = BLOCKER_CATEGORIES[log.category] || BLOCKER_CATEGORIES.other;
               return (
                 <tr key={log.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-foreground max-w-[200px] truncate">
+                  <td className="max-w-50 truncate px-5 py-3.5 font-medium text-foreground">
                     {log.taskTitle}
                   </td>
                   <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
                     {meta.label}
                   </td>
-                  <td className="px-5 py-3.5 text-muted-foreground max-w-[280px]">
+                  <td className="max-w-70 px-5 py-3.5 text-muted-foreground">
                     <span className="line-clamp-2">{log.reason}</span>
                   </td>
                   <td className="px-5 py-3.5 text-muted-foreground capitalize whitespace-nowrap">
