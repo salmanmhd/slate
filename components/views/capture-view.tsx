@@ -2,21 +2,24 @@
 
 import React from 'react';
 import { useMatrixStore } from '@/lib/store';
-import { parseTaskInput, formatFriendlyDate } from '@/lib/nlp-parser';
+import { parseTaskInput } from '@/lib/nlp-parser';
+import { CATEGORY_BY_ID } from '@/lib/categories';
+import { CategoryMark } from '@/components/category-switcher';
+import { TaskMeta } from '@/components/task-meta';
 import { Calendar, X, ArrowRight, CornerDownLeft } from 'lucide-react';
 
 export function CaptureView() {
   const {
     tasks,
     addTask,
-    deleteTask,
+    requestDeleteTask,
     setActiveView,
     openTaskDetailModal,
+    setTaskCategory,
     captureDraft,
     setCaptureDraft,
   } = useMatrixStore();
 
-  const [justAdded, setJustAdded] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const inboxTasks = tasks.filter((t) => t.status === 'inbox' && t.completionState !== 'completed');
@@ -36,10 +39,9 @@ export function CaptureView() {
     e.preventDefault();
     if (!captureDraft.trim()) return;
 
-    const task = addTask(captureDraft.trim(), 'inbox');
+    // A freshly mounted row animates itself in — no extra state needed.
+    addTask(captureDraft.trim(), 'inbox');
     setCaptureDraft('');
-    setJustAdded(task.id);
-    window.setTimeout(() => setJustAdded((id) => (id === task.id ? null : id)), 1400);
     inputRef.current?.focus();
   };
 
@@ -58,14 +60,19 @@ export function CaptureView() {
         />
 
         <div className="mt-3 flex min-h-6 items-center justify-between gap-3">
-          {nlpPreview?.formattedPreview ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
-              <Calendar className="size-3 text-foreground/70" />
-              {nlpPreview.formattedPreview}
-            </span>
-          ) : (
-            <span />
-          )}
+          <div className="flex items-center gap-1.5">
+            {nlpPreview?.formattedPreview && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+                <Calendar className="size-3 text-foreground/70" />
+                {nlpPreview.formattedPreview}
+              </span>
+            )}
+            {nlpPreview?.category && (
+              <span className="rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+                {CATEGORY_BY_ID[nlpPreview.category].label}
+              </span>
+            )}
+          </div>
 
           {captureDraft.trim() && (
             <button
@@ -80,50 +87,52 @@ export function CaptureView() {
       </form>
 
       {inboxTasks.length > 0 && (
-        <div className="mt-14">
-          <div className="flex items-center justify-between border-b border-border/50 px-1 pb-2">
-            <span className="text-[11px] tabular-nums text-muted-foreground/70">
-              {inboxTasks.length}
-            </span>
+        <div className="mt-16">
+          <div className="flex items-center justify-end border-b border-border/50 pb-2">
             <button
               onClick={() => setActiveView('decide')}
-              className="focus-ring flex items-center gap-1 rounded-md px-1 text-xs font-semibold text-foreground transition-colors hover:text-foreground/70"
+              className="focus-ring flex items-center gap-1.5 rounded-md px-1 text-xs font-semibold text-foreground transition-colors hover:text-foreground/60"
             >
               Sort
+              <span className="tabular-nums text-muted-foreground">{inboxTasks.length}</span>
               <ArrowRight className="size-3" />
             </button>
           </div>
 
-          <ul className="mt-1">
-            {inboxTasks.map((task) => (
+          {/* A list, not a board — this page is a writing surface, so rows are
+              separated by hairlines rather than boxed into cards. */}
+          <ul className="divide-y divide-border/40">
+            {inboxTasks.map((task, index) => (
               <li
                 key={task.id}
-                className={`group flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-muted/30 ${
-                  justAdded === task.id ? 'animate-rise' : ''
-                }`}
+                className="animate-rise group flex items-start gap-3 py-3.5"
+                style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}
               >
-                <button
-                  onClick={() => openTaskDetailModal(task.id)}
-                  className="focus-ring flex min-w-0 flex-1 items-center gap-3 rounded-md text-left"
-                  title="Open details"
-                >
-                  <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
-                  <span className="truncate text-sm text-foreground/90">{task.content}</span>
-                  {task.parsedDate && (
-                    <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground/60">
-                      {formatFriendlyDate(task.parsedDate)}
-                    </span>
-                  )}
-                </button>
+                <div className="min-w-0 flex-1">
+                  <button
+                    onClick={() => openTaskDetailModal(task.id)}
+                    className="focus-ring block w-full truncate rounded-md text-left text-[0.9375rem] leading-snug text-foreground transition-colors group-hover:text-foreground/70"
+                    title="Open details"
+                  >
+                    {task.content}
+                  </button>
+                  <TaskMeta task={task} variant="line" />
+                </div>
 
-                <button
-                  onClick={() => deleteTask(task.id)}
-                  className="focus-ring shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100! focus-visible:opacity-100"
-                  title="Remove"
-                  aria-label={`Remove ${task.content}`}
-                >
-                  <X className="size-3.5" />
-                </button>
+                <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                  <CategoryMark
+                    category={task.category}
+                    onCycle={(next) => setTaskCategory(task.id, next)}
+                  />
+                  <button
+                    onClick={() => requestDeleteTask(task.id)}
+                    className="focus-ring rounded-md text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                    title="Remove"
+                    aria-label={`Remove ${task.content}`}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

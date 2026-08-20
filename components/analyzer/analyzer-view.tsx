@@ -3,6 +3,9 @@
 import React from 'react';
 import { useMatrixStore } from '@/lib/store';
 import { ExcusesLedger } from './excuses-ledger';
+import { ContributionGrid } from './contribution-grid';
+import { FocusAnalysis } from './focus-analysis';
+import { SessionHistory } from './session-history';
 import { QUADRANTS } from '@/components/quadrants';
 import { TaskStatus } from '@/types/matrix';
 import { LineChart } from 'lucide-react';
@@ -15,7 +18,7 @@ const QUADRANT_KEYS: Exclude<TaskStatus, 'inbox'>[] = [
 ];
 
 export function AnalyzerView() {
-  const { tasks, logs, setActiveView } = useMatrixStore();
+  const { tasks, logs, sessions, setActiveView } = useMatrixStore();
 
   const total = tasks.length;
   const completed = tasks.filter((t) => t.completionState === 'completed').length;
@@ -36,7 +39,7 @@ export function AnalyzerView() {
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (completionPct / 100) * circumference;
 
-  if (total === 0 && logs.length === 0) {
+  if (total === 0 && logs.length === 0 && sessions.length === 0) {
     return (
       <div className="animate-rise mx-auto flex min-h-[calc(100vh-7rem)] max-w-sm flex-col items-center justify-center text-center">
         <div className="flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-muted/40 text-muted-foreground">
@@ -57,6 +60,8 @@ export function AnalyzerView() {
 
   return (
     <div className="mx-auto w-full max-w-300 space-y-5 pb-16">
+      <ContributionGrid sessions={sessions} tasks={tasks} />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Follow-through */}
         <div className="card-depth flex flex-col items-center rounded-2xl border border-border/80 bg-card p-6">
@@ -123,6 +128,10 @@ export function AnalyzerView() {
           </div>
         </div>
       </div>
+
+      {sessions.length > 0 && <FocusAnalysis sessions={sessions} />}
+
+      <SessionHistory sessions={sessions} />
 
       <ExcusesLedger logs={logs} />
     </div>

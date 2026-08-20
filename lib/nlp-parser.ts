@@ -1,10 +1,13 @@
 import * as chrono from 'chrono-node';
+import { extractCategory } from './categories';
+import { TaskCategory } from '@/types/matrix';
 
 export interface NLPParseResult {
   cleanedContent: string;
   parsedDate: Date | null;
   rawDateText: string | null;
   formattedPreview: string | null;
+  category: TaskCategory | null;
 }
 
 /**
@@ -15,15 +18,21 @@ export interface NLPParseResult {
  *  - "Deploy matrix updates next Tuesday" -> "Deploy matrix updates" + Date
  */
 export function parseTaskInput(input: string): NLPParseResult {
-  const trimmed = input.trim();
-  if (!trimmed) {
+  const raw = input.trim();
+  if (!raw) {
     return {
       cleanedContent: '',
       parsedDate: null,
       rawDateText: null,
       formattedPreview: null,
+      category: null,
     };
   }
+
+  // Strip the category tag before chrono runs, so "#w" can never be read as
+  // part of a date expression.
+  const { category, rest } = extractCategory(raw);
+  const trimmed = rest || raw;
 
   const parseResults = chrono.parse(trimmed, new Date(), { forwardDate: true });
 
@@ -33,6 +42,7 @@ export function parseTaskInput(input: string): NLPParseResult {
       parsedDate: null,
       rawDateText: null,
       formattedPreview: null,
+      category,
     };
   }
 
@@ -59,6 +69,7 @@ export function parseTaskInput(input: string): NLPParseResult {
     parsedDate,
     rawDateText,
     formattedPreview: parsedDate ? formatFriendlyDate(parsedDate) : null,
+    category,
   };
 }
 

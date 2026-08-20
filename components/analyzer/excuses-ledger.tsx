@@ -35,7 +35,7 @@ export function ExcusesLedger({ logs }: ExcusesLedgerProps) {
     const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const link = document.createElement('a');
     link.setAttribute('href', encodeURI(csv));
-    link.setAttribute('download', `focusmatrix_logs_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `slate_logs_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

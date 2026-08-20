@@ -147,6 +147,79 @@
   box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.35), 0 0 0 1px oklch(0.3 0.015 260 / 0.4);
 }
 
+/* Contribution scale, GitHub's own values in both themes. Kept as literal hex
+   rather than derived from the app palette — the whole point is that this
+   scale is instantly recognisable. */
+:root {
+  --gh-0: #ebedf0;
+  --gh-1: #9be9a8;
+  --gh-2: #40c463;
+  --gh-3: #30a14e;
+  --gh-4: #216e39;
+}
+
+.dark {
+  --gh-0: #1b1f24;
+  --gh-1: #0e4429;
+  --gh-2: #006d32;
+  --gh-3: #26a641;
+  --gh-4: #39d353;
+}
+
+.gh-0 {
+  background-color: var(--gh-0);
+}
+.gh-1 {
+  background-color: var(--gh-1);
+}
+.gh-2 {
+  background-color: var(--gh-2);
+}
+.gh-3 {
+  background-color: var(--gh-3);
+}
+.gh-4 {
+  background-color: var(--gh-4);
+}
+
+/* Liquid glass: a translucent pane that refracts the page behind it. The
+   saturation lift keeps colour alive through the blur, and the inset top edge
+   is the specular highlight that stops it reading as flat frosted plastic. */
+.glass {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--card) 80%, transparent),
+    color-mix(in oklch, var(--card) 62%, transparent)
+  );
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  box-shadow:
+    0 32px 64px -16px rgb(0 0 0 / 0.28),
+    0 2px 8px -2px rgb(0 0 0 / 0.12),
+    inset 0 1px 0 color-mix(in oklch, white 65%, transparent);
+}
+
+.dark .glass {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--card) 74%, transparent),
+    color-mix(in oklch, var(--card) 54%, transparent)
+  );
+  border-color: color-mix(in oklch, white 14%, transparent);
+  box-shadow:
+    0 32px 64px -16px rgb(0 0 0 / 0.65),
+    0 2px 8px -2px rgb(0 0 0 / 0.4),
+    inset 0 1px 0 color-mix(in oklch, white 16%, transparent);
+}
+
+/* Without backdrop-filter the pane would be see-through and unreadable. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--card);
+  }
+}
+
 /* Consistent keyboard-only focus treatment across custom (non-shadcn) controls */
 .focus-ring:focus-visible {
   outline: 2px solid var(--foreground);
@@ -183,6 +256,29 @@ body.focus-resting header:focus-within {
   opacity: 1;
 }
 
+/* Fires on every start/pause so the change is felt even when the dial is
+   nowhere near the pointer — e.g. when the spacebar triggered it. */
+@keyframes dial-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  to {
+    transform: scale(1.65);
+    opacity: 0;
+  }
+}
+
+.animate-dial-ping {
+  animation: dial-ping 0.55s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-dial-ping {
+    animation: none;
+  }
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -198,8 +294,24 @@ body.focus-resting header:focus-within {
   animation: rise 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 
+/* Opacity only — a transform here would make position:fixed children inside a
+   view (the timer, the date) resolve against this box instead of the viewport. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade {
+  animation: fade-in 0.25s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-rise {
+  .animate-rise,
+  .animate-fade {
     animation: none;
   }
 }

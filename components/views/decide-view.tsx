@@ -24,92 +24,61 @@ import { useMatrixStore } from '@/lib/store';
 import { Task, TaskStatus } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { QUADRANTS, INBOX_META } from '@/components/quadrants';
+import { CategorySwitcher, CategoryMark } from '@/components/category-switcher';
+import { TaskMeta } from '@/components/task-meta';
 import { useNow, isOverdue } from '@/hooks/use-now';
-import {
-  Calendar,
-  Check,
-  Circle,
-  AlertCircle,
-  Plus,
-  FileText,
-  ChevronRight,
-  Target,
-} from 'lucide-react';
+import { Calendar, Check, Circle, ChevronRight, Target } from 'lucide-react';
 
 type Quadrant = Exclude<TaskStatus, 'inbox'>;
 const QUADRANT_IDS: TaskStatus[] = ['inbox', 'do_first', 'schedule', 'delegate', 'eliminate'];
 
 export function DecideView() {
-  const {
-    tasks,
-    moveTask,
-    reorderTasks,
-    addTask,
-    setActiveView,
-    activeModalTaskId,
-    accountabilityModalTask,
-  } = useMatrixStore();
+  const { tasks, moveTask, reorderTasks, setActiveView, activeCategory, setTaskCategory } =
+    useMatrixStore();
 
   const [activeTask, setActiveTask] = React.useState<Task | null>(null);
-  const [inboxInput, setInboxInput] = React.useState('');
-  const quickAddRef = React.useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const byStatus = React.useMemo(() => {
+  // The inbox is always everything — an unsorted task must never be hidden by
+  // a filter. The matrix is what narrows to the chosen context.
+  const { byStatus, inboxTasks, sortedCount, totalOpen } = React.useMemo(() => {
     const open = tasks.filter((t) => t.completionState !== 'completed');
+    const inMatrix = open.filter((t) => t.status !== 'inbox');
+    const scoped =
+      activeCategory === 'all' ? inMatrix : inMatrix.filter((t) => t.category === activeCategory);
+
     return {
-      inbox: open.filter((t) => t.status === 'inbox'),
-      do_first: open.filter((t) => t.status === 'do_first'),
-      schedule: open.filter((t) => t.status === 'schedule'),
-      delegate: open.filter((t) => t.status === 'delegate'),
-      eliminate: open.filter((t) => t.status === 'eliminate'),
+      inboxTasks: open.filter((t) => t.status === 'inbox'),
+      sortedCount: inMatrix.length,
+      totalOpen: open.length,
+      byStatus: {
+        do_first: scoped.filter((t) => t.status === 'do_first'),
+        schedule: scoped.filter((t) => t.status === 'schedule'),
+        delegate: scoped.filter((t) => t.status === 'delegate'),
+        eliminate: scoped.filter((t) => t.status === 'eliminate'),
+      },
     };
-  }, [tasks]);
-
-  const inboxTasks = byStatus.inbox;
-  const sortedCount = tasks.filter(
-    (t) => t.completionState !== 'completed' && t.status !== 'inbox'
-  ).length;
-  const totalOpen = sortedCount + inboxTasks.length;
-
-  // Typing anywhere on this page lands in the quick-add field, so a stray
-  // thought never costs you a click.
-  React.useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (
-        !target ||
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.altKey ||
-        e.isComposing
-      ) {
-        return;
-      }
-      if (activeModalTaskId || accountabilityModalTask) return;
-      if (['1', '2', '3', '4'].includes(e.key)) return; // owned by the header
-
-      if (e.key.length === 1) {
-        e.preventDefault();
-        setInboxInput((prev) => prev + e.key);
-        quickAddRef.current?.focus();
-      }
-    };
-
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [activeModalTaskId, accountabilityModalTask]);
+  }, [tasks, activeCategory]);
 
   const handleDragStart = (e: DragStartEvent) => {
     const t = tasks.find((item) => item.id === e.active.id);
     if (t) setActiveTask(t);
+  };
+
+  /**
+   * Sorting an untagged task into a filtered matrix would drop it straight out
+   * of view. Filing it under the context you are working in is what you meant.
+   * A task that already carries a different category keeps it — that was a
+   * deliberate choice and is not ours to overwrite.
+   */
+  const adoptContext = (task: Task, target: TaskStatus) => {
+    if (target === 'inbox') return;
+    if (activeCategory === 'all' || task.category) return;
+    setTaskCategory(task.id, activeCategory);
   };
 
   const handleDragEnd = (e: DragEndEvent) => {
@@ -123,7 +92,10 @@ export function DecideView() {
     if (!dragged) return;
 
     if (QUADRANT_IDS.includes(overId as TaskStatus)) {
-      if (dragged.status !== overId) moveTask(activeId, overId as TaskStatus);
+      if (dragged.status !== overId) {
+        adoptContext(dragged, overId as TaskStatus);
+        moveTask(activeId, overId as TaskStatus);
+      }
       return;
     }
 
@@ -132,15 +104,9 @@ export function DecideView() {
     if (dragged.status === overTask.status) {
       reorderTasks(activeId, overId, dragged.status);
     } else {
+      adoptContext(dragged, overTask.status);
       moveTask(activeId, overTask.status);
     }
-  };
-
-  const handleQuickAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inboxInput.trim()) return;
-    addTask(inboxInput.trim(), 'inbox');
-    setInboxInput('');
   };
 
   return (
@@ -151,8 +117,10 @@ export function DecideView() {
       onDragEnd={handleDragEnd}
     >
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 lg:h-[calc(100vh-6.25rem)]">
-        {/* Progress only — the nav already says where you are */}
-        <div className="flex min-h-7 shrink-0 items-center justify-end border-b border-border/60 px-1 pb-1.5">
+        {/* Context on the left, sorting progress on the right */}
+        <div className="flex min-h-7 shrink-0 items-center justify-between gap-4 border-b border-border/60 px-1 pb-1.5">
+          <CategorySwitcher />
+
           {totalOpen > 0 &&
             (inboxTasks.length === 0 ? (
               <button
@@ -191,34 +159,6 @@ export function DecideView() {
             </div>
 
             <InboxList tasks={inboxTasks} />
-
-            <form onSubmit={handleQuickAdd} className="mt-2 shrink-0">
-              <div className="relative">
-                <input
-                  ref={quickAddRef}
-                  type="text"
-                  value={inboxInput}
-                  onChange={(e) => setInboxInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setInboxInput('');
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  placeholder="Add a task"
-                  className="w-full rounded-xl border border-border/80 bg-background py-1.5 pr-8 pl-3 text-xs text-foreground transition-colors placeholder:text-muted-foreground/50 focus:border-foreground/30 focus:outline-none"
-                  autoComplete="off"
-                />
-                <button
-                  type="submit"
-                  disabled={!inboxInput.trim()}
-                  className="focus-ring absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30"
-                  title="Add to inbox"
-                >
-                  <Plus className="size-3.5" />
-                </button>
-              </div>
-            </form>
           </section>
 
           {/* The matrix, with its axes stated once */}
@@ -318,8 +258,10 @@ function QuadrantPanel({ status, tasks }: { status: Quadrant; tasks: Task[] }) {
   return (
     <div
       ref={setNodeRef}
-      className={`card-depth flex min-h-0 flex-col rounded-2xl border p-2.5 transition-all ${
-        isOver ? 'border-foreground/40 bg-muted/30 opacity-100 ring-0' : resting
+      className={`card-depth flex min-h-0 flex-col rounded-2xl border p-2.5 transition-all duration-200 ${
+        isOver
+          ? 'scale-[1.015] border-foreground/40 bg-muted/30 opacity-100 ring-0'
+          : `scale-100 ${resting}`
       }`}
     >
       <div className="mb-1.5 flex shrink-0 items-center gap-1.5 border-b border-border/50 pb-1.5">
@@ -351,7 +293,7 @@ function QuadrantPanel({ status, tasks }: { status: Quadrant; tasks: Task[] }) {
 /* ──────── Task card ──────── */
 
 function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
-  const { openTaskDetailModal, toggleTaskCompletion } = useMatrixStore();
+  const { openTaskDetailModal, toggleTaskCompletion, setTaskCategory } = useMatrixStore();
   const [blockedHint, setBlockedHint] = React.useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -386,7 +328,7 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
       {...attributes}
       {...listeners}
       onClick={() => openTaskDetailModal(task.id)}
-      className={`group relative flex cursor-grab flex-col gap-1 rounded-xl border bg-card px-2.5 py-2 shadow-xs transition-colors hover:border-foreground/30 active:cursor-grabbing ${
+      className={`group relative flex cursor-grab flex-col gap-1 rounded-xl border bg-card px-2.5 py-2 shadow-xs transition-all hover:-translate-y-px hover:border-foreground/30 hover:shadow-sm active:cursor-grabbing ${
         isCompleted ? 'border-border/40 opacity-60' : overdue ? 'border-q-do-first/40' : 'border-border/80'
       }`}
     >
@@ -417,41 +359,23 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
           {task.content}
         </p>
 
+        <span className="mt-0.5 flex shrink-0">
+          <CategoryMark
+            category={task.category}
+            onCycle={(next) => setTaskCategory(task.id, next)}
+          />
+        </span>
+
         <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
       </div>
 
-      {(task.parsedDate || subtasks.length > 0 || task.notes || blockedHint) && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[10px] text-muted-foreground">
-          {accentDot && !blockedHint && (
-            <span className={`size-1 rounded-full ${accentDot} opacity-70`} aria-hidden />
-          )}
-
-          {blockedHint ? (
-            <span className="font-medium text-q-do-first">
-              Finish its {subtasks.length - doneSubs} open{' '}
-              {subtasks.length - doneSubs === 1 ? 'step' : 'steps'} first
-            </span>
-          ) : (
-            <>
-              {task.parsedDate && (
-                <span
-                  className={`inline-flex items-center gap-0.5 rounded px-1 py-px font-medium ${
-                    overdue ? 'bg-q-do-first/10 text-q-do-first' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {overdue ? <AlertCircle className="size-2.5" /> : <Calendar className="size-2.5" />}
-                  {formatFriendlyDate(task.parsedDate)}
-                </span>
-              )}
-              {subtasks.length > 0 && (
-                <span className="rounded bg-muted px-1.5 py-px font-semibold tabular-nums text-muted-foreground">
-                  {doneSubs}/{subtasks.length}
-                </span>
-              )}
-              {task.notes && <FileText className="size-2.5 text-muted-foreground/70" aria-label="Has notes" />}
-            </>
-          )}
-        </div>
+      {blockedHint ? (
+        <p className="pt-0.5 text-[10px] font-medium text-q-do-first">
+          Finish its {subtasks.length - doneSubs} open{' '}
+          {subtasks.length - doneSubs === 1 ? 'step' : 'steps'} first
+        </p>
+      ) : (
+        <TaskMeta task={task} accentDot={accentDot} />
       )}
     </div>
   );

@@ -7,29 +7,31 @@ import * as React from 'react';
  * `delay`. Focus mode uses this to strip the screen back to the single task
  * and bring everything else back the moment you reach for it.
  */
-export function useIdleReveal(delay = 2200): boolean {
+export function useIdleReveal(delay = 2200): { revealed: boolean; wake: () => void } {
   const [revealed, setRevealed] = React.useState(true);
+  const timerRef = React.useRef<number | undefined>(undefined);
+
+  /** Bring the page back and restart the idle countdown. */
+  const wake = React.useCallback(() => {
+    setRevealed(true);
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setRevealed(false), delay);
+  }, [delay]);
 
   React.useEffect(() => {
-    let timer = window.setTimeout(() => setRevealed(false), delay);
-
-    const wake = () => {
-      setRevealed(true);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setRevealed(false), delay);
-    };
+    timerRef.current = window.setTimeout(() => setRevealed(false), delay);
 
     window.addEventListener('mousemove', wake, { passive: true });
     window.addEventListener('touchstart', wake, { passive: true });
     window.addEventListener('keydown', wake);
 
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(timerRef.current);
       window.removeEventListener('mousemove', wake);
       window.removeEventListener('touchstart', wake);
       window.removeEventListener('keydown', wake);
     };
-  }, [delay]);
+  }, [delay, wake]);
 
-  return revealed;
+  return { revealed, wake };
 }

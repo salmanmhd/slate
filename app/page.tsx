@@ -6,11 +6,13 @@ import { Header } from '@/components/header';
 import { CaptureView } from '@/components/views/capture-view';
 import { DecideView } from '@/components/views/decide-view';
 import { FocusView } from '@/components/views/focus-view';
+import { PomodoroView } from '@/components/views/pomodoro-view';
 import { AnalyzerView } from '@/components/analyzer/analyzer-view';
 import { AccountabilityDialog } from '@/components/accountability/accountability-dialog';
 import { TaskDetailModal } from '@/components/task-detail-modal';
+import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 
-export default function FocusMatrixApp() {
+export default function SlateApp() {
   const { isHydrated, hydrate, activeView } = useMatrixStore();
 
   React.useEffect(() => {
@@ -29,13 +31,18 @@ export default function FocusMatrixApp() {
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <Header />
       <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8">
-        {activeView === 'capture' && <CaptureView />}
-        {activeView === 'decide' && <DecideView />}
-        {activeView === 'focus' && <FocusView />}
-        {activeView === 'reflect' && <AnalyzerView />}
+        {/* Keyed so switching views cross-fades instead of snapping */}
+        <div key={activeView} className="animate-fade">
+          {activeView === 'capture' && <CaptureView />}
+          {activeView === 'decide' && <DecideView />}
+          {activeView === 'focus' && <FocusView />}
+          {activeView === 'timer' && <PomodoroView />}
+          {activeView === 'reflect' && <AnalyzerView />}
+        </div>
       </main>
       <AccountabilityDialog />
       <TaskDetailModal />
+      <ConfirmDeleteDialog />
     </div>
   );
 }

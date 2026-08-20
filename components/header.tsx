@@ -5,13 +5,14 @@ import { useMatrixStore } from '@/lib/store';
 import { AppView } from '@/types/matrix';
 import { useTheme } from 'next-themes';
 import { LogoMark } from '@/components/logo';
-import { PenLine, LayoutGrid, Target, LineChart, Moon, Sun } from 'lucide-react';
+import { PenLine, LayoutGrid, Target, Timer, LineChart, Moon, Sun } from 'lucide-react';
 
 const VIEWS: { id: AppView; icon: React.ReactNode; label: string; key: string }[] = [
   { id: 'capture', icon: <PenLine className="size-3.5" />, label: 'Capture', key: '1' },
   { id: 'decide', icon: <LayoutGrid className="size-3.5" />, label: 'Decide', key: '2' },
   { id: 'focus', icon: <Target className="size-3.5" />, label: 'Focus', key: '3' },
-  { id: 'reflect', icon: <LineChart className="size-3.5" />, label: 'Reflect', key: '4' },
+  { id: 'timer', icon: <Timer className="size-3.5" />, label: 'Timer', key: '4' },
+  { id: 'reflect', icon: <LineChart className="size-3.5" />, label: 'Reflect', key: '5' },
 ];
 
 export function Header() {
@@ -47,6 +48,8 @@ export function Header() {
 
       // A modal owns the keyboard while it is open.
       if (activeModalTaskId || accountabilityModalTask) return;
+      // The timer page owns Space; don't let it also type into Capture.
+      if (activeView === 'timer' && (e.code === 'Space' || e.key === ' ')) return;
 
       const view = VIEWS.find((v) => v.key === e.key);
       if (view) {
@@ -55,9 +58,9 @@ export function Header() {
         return;
       }
 
-      // Focus is deliberately typing-proof, and Decide handles its own keys
-      // (triage shortcuts + its inline inbox field).
-      if (activeView === 'focus' || activeView === 'decide') return;
+      // Focus is the only typing-proof page. Everywhere else, a keystroke means
+      // a thought worth catching, so it lands in Capture.
+      if (activeView === 'focus') return;
 
       if (e.key.length === 1) {
         e.preventDefault();
@@ -70,6 +73,7 @@ export function Header() {
     return () => window.removeEventListener('keydown', handler);
   }, [activeView, activeModalTaskId, accountabilityModalTask, setActiveView, appendCaptureDraft]);
 
+  // The inbox is never filtered, so this counts everything unsorted.
   const inboxCount = tasks.filter(
     (t) => t.status === 'inbox' && t.completionState === 'pending'
   ).length;
@@ -89,7 +93,7 @@ export function Header() {
         <div className="flex items-center gap-2">
           <LogoMark className="size-5" />
           <span className="hidden text-sm font-semibold tracking-tight text-foreground sm:inline">
-            FocusMatrix
+            Slate
           </span>
         </div>
 

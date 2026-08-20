@@ -18,15 +18,14 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMatrixStore } from '@/lib/store';
-import { Priority, SubTask, Task, TaskStatus } from '@/types/matrix';
+import { Priority, SubTask, Task, TaskCategory } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
-import { QUADRANTS, INBOX_META } from '@/components/quadrants';
+import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
 import {
   X,
   Calendar as CalendarIcon,
   Clock,
   Trash2,
-  FileText,
   Pencil,
   GripVertical,
   ChevronLeft,
@@ -49,16 +48,6 @@ import {
   isToday,
 } from 'date-fns';
 
-const PLACEMENTS: { status: TaskStatus; label: string; Icon: React.ElementType; text?: string }[] = [
-  { status: 'inbox', label: INBOX_META.title, Icon: INBOX_META.Icon },
-  ...(['do_first', 'schedule', 'delegate', 'eliminate'] as const).map((s) => ({
-    status: s as TaskStatus,
-    label: QUADRANTS[s].title,
-    Icon: QUADRANTS[s].Icon,
-    text: QUADRANTS[s].text,
-  })),
-];
-
 export function TaskDetailModal() {
   const { tasks, activeModalTaskId } = useMatrixStore();
   const task = tasks.find((t) => t.id === activeModalTaskId);
@@ -76,8 +65,8 @@ function TaskDetailContent({ task }: { task: Task }) {
     editTaskContent,
     editTaskNotes,
     editTaskExactDate,
-    deleteTask,
-    moveTask,
+    setTaskCategory,
+    requestDeleteTask,
     addSubtask,
     toggleSubtask,
     deleteSubtask,
@@ -153,55 +142,23 @@ function TaskDetailContent({ task }: { task: Task }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Kept light so the glass above it has something to refract */}
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+        className="fixed inset-0 bg-background/40 backdrop-blur-sm"
         onClick={closeTaskDetailModal}
       />
 
+      {/* Fixed height: opening the calendar reflows the inside, never the frame. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Task details"
-        className="animate-rise relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl border border-border/80 bg-card p-5 shadow-2xl"
+        className="glass animate-rise relative flex h-[min(88vh,42rem)] w-full max-w-2xl flex-col rounded-2xl"
       >
-        {/* Where this task lives — the current one is named, the rest are one click away */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-0.5">
-            {PLACEMENTS.map(({ status, label, Icon, text }) => {
-              const isCurrent = task.status === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => moveTask(task.id, status)}
-                  aria-pressed={isCurrent}
-                  className={`focus-ring flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors ${
-                    isCurrent
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground/40 hover:bg-muted/50 hover:text-foreground'
-                  }`}
-                  title={`${label} — ${status === 'inbox' ? INBOX_META.hint : QUADRANTS[status as Exclude<TaskStatus, 'inbox'>].hint}`}
-                  aria-label={label}
-                >
-                  <Icon className={`size-3.5 ${isCurrent && text ? text : ''}`} />
-                  {isCurrent && <span className="text-[11px] font-semibold">{label}</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            onClick={closeTaskDetailModal}
-            className="focus-ring shrink-0 rounded-lg p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
         {/* Title */}
-        <div className="mt-3">
+        <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
           {isEditingTitle ? (
-            <div className="space-y-2">
+            <div className="flex-1 space-y-2">
               <textarea
                 autoFocus
                 rows={2}
@@ -218,7 +175,7 @@ function TaskDetailContent({ task }: { task: Task }) {
                     setIsEditingTitle(false);
                   }
                 }}
-                className="w-full resize-none rounded-xl border border-border/80 bg-background p-2.5 text-base font-semibold text-foreground focus:border-foreground/30 focus:outline-none"
+                className="w-full resize-none rounded-xl border border-border/80 bg-background p-3 text-lg font-semibold text-foreground focus:border-foreground/30 focus:outline-none"
               />
               <div className="flex justify-end gap-2">
                 <button
@@ -241,157 +198,197 @@ function TaskDetailContent({ task }: { task: Task }) {
           ) : (
             <button
               onClick={() => setIsEditingTitle(true)}
-              className="focus-ring group flex w-full cursor-text items-start justify-between gap-2 rounded-lg p-1 text-left transition-colors hover:bg-muted/30"
+              className="focus-ring group flex flex-1 cursor-text items-start justify-between gap-2 rounded-lg p-1 text-left transition-colors hover:bg-muted/30"
               title="Click to edit"
             >
-              <h2 className="font-heading text-lg leading-snug font-semibold text-foreground">
+              <h2 className="font-heading text-xl leading-snug font-semibold text-foreground">
                 {task.content}
               </h2>
-              <Pencil className="mt-1 size-3.5 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
+              <Pencil className="mt-1.5 size-4 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
             </button>
           )}
+
+          <button
+            onClick={closeTaskDetailModal}
+            className="focus-ring mt-1 shrink-0 rounded-lg p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
         </div>
 
-        {/* Deadline. The calendar expands inline — a floating popover would be
-            clipped by this dialog's own scroll container. */}
-        <div className="mt-4 border-b border-border/50 pb-4">
-          <div className="flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setShowDatePicker(!showDatePicker)}
-              aria-expanded={showDatePicker}
-              className={`focus-ring flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
-                task.parsedDate
-                  ? 'border-foreground/20 bg-muted/60 text-foreground'
-                  : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
-              }`}
-            >
-              <CalendarIcon className="size-3.5" />
-              {task.parsedDate ? formatFriendlyDate(task.parsedDate) : 'Deadline'}
-            </button>
+        {/* Scrolling body */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6">
+          {/* Category */}
+          <div className="flex items-center gap-1 border-b border-border/50 pb-4">
+            {([undefined, ...CATEGORIES.map((c) => c.id)] as (TaskCategory | undefined)[]).map(
+              (id) => {
+                const isCurrent = task.category === id;
+                return (
+                  <button
+                    key={id ?? 'none'}
+                    onClick={() => setTaskCategory(task.id, id)}
+                    aria-pressed={isCurrent}
+                    className={`focus-ring rounded-lg px-2.5 py-1 text-xs transition-colors ${
+                      isCurrent
+                        ? 'bg-muted font-semibold text-foreground'
+                        : 'text-muted-foreground/60 hover:text-foreground'
+                    }`}
+                  >
+                    {id ? CATEGORY_BY_ID[id].label : 'No category'}
+                  </button>
+                );
+              }
+            )}
+          </div>
 
-            {task.parsedDate && (
+          {/* Deadline */}
+          <div className="border-b border-border/50 py-4">
+            <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => editTaskExactDate(task.id, null)}
-                className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-destructive"
+                onClick={() => setShowDatePicker(!showDatePicker)}
+                aria-expanded={showDatePicker}
+                className={`focus-ring flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                  task.parsedDate
+                    ? 'border-foreground/20 bg-muted/60 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
+                }`}
               >
-                Clear
+                <CalendarIcon className="size-4" />
+                {task.parsedDate ? formatFriendlyDate(task.parsedDate) : 'Deadline'}
               </button>
-            )}
-          </div>
 
-          {showDatePicker && (
-            <div className="mt-3 rounded-2xl border border-border/70 bg-background p-3.5">
-              <CalendarPicker
-                initialDate={task.parsedDate ? new Date(task.parsedDate) : new Date()}
-                onSelectDate={(newDate) => {
-                  editTaskExactDate(task.id, newDate.toISOString());
-                  setShowDatePicker(false);
-                }}
-                onCancel={() => setShowDatePicker(false)}
-              />
+              {task.parsedDate && (
+                <button
+                  type="button"
+                  onClick={() => editTaskExactDate(task.id, null)}
+                  className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-destructive"
+                >
+                  Clear
+                </button>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Steps */}
-        <div className="mt-4 space-y-2.5">
-          <div className="flex items-center gap-3">
-            <span className="shrink-0 text-xs font-semibold text-foreground">Steps</span>
-            {subtasks.length > 0 && (
-              <>
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-foreground/70 transition-all duration-500"
-                    style={{ width: `${Math.round((doneCount / subtasks.length) * 100)}%` }}
-                  />
-                </div>
-                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                  {doneCount}/{subtasks.length}
-                </span>
-              </>
+            {showDatePicker && (
+              <div className="mt-3 w-full max-w-64 rounded-2xl border border-border/70 bg-background p-3.5">
+                <CalendarPicker
+                  initialDate={task.parsedDate ? new Date(task.parsedDate) : new Date()}
+                  onSelectDate={(newDate) => {
+                    editTaskExactDate(task.id, newDate.toISOString());
+                    setShowDatePicker(false);
+                  }}
+                  onCancel={() => setShowDatePicker(false)}
+                />
+              </div>
             )}
           </div>
 
-          {subtasks.length > 0 && (
-            <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEndSubtask}>
-              <div className="max-h-52 space-y-1 overflow-y-auto pr-1">
-                <SortableContext items={subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                  {subtasks.map((sub) => (
-                    <SubtaskRow
-                      key={sub.id}
-                      sub={sub}
-                      onToggle={() => toggleSubtask(task.id, sub.id)}
-                      onDelete={() => deleteSubtask(task.id, sub.id)}
-                      onTogglePriority={() =>
-                        editSubtask(task.id, sub.id, {
-                          priority: (sub.priority === 'high' ? 'normal' : 'high') as Priority,
-                        })
-                      }
+          {/* Steps */}
+          <div className="py-4">
+            <div className="flex items-center gap-3">
+              <span className="shrink-0 text-sm font-semibold text-foreground">Steps</span>
+              {subtasks.length > 0 && (
+                <>
+                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-foreground/70 transition-all duration-500"
+                      style={{ width: `${Math.round((doneCount / subtasks.length) * 100)}%` }}
                     />
-                  ))}
-                </SortableContext>
-              </div>
-            </DndContext>
-          )}
+                  </div>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {doneCount}/{subtasks.length}
+                  </span>
+                </>
+              )}
+            </div>
 
-          <form onSubmit={handleAddSubtask} className="flex items-center gap-2">
-            <input
-              ref={subtaskInputRef}
-              type="text"
-              value={newSubtask}
-              onChange={(e) => setNewSubtask(e.target.value)}
-              placeholder="Add a step…"
-              className="flex-1 rounded-xl border border-border/60 bg-background px-3 py-1.5 text-xs text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
-              autoComplete="off"
-            />
+            {subtasks.length > 0 && (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCorners}
+                onDragEnd={handleDragEndSubtask}
+              >
+                <div className="mt-3 space-y-1.5">
+                  <SortableContext
+                    items={subtasks.map((s) => s.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {subtasks.map((sub) => (
+                      <SubtaskRow
+                        key={sub.id}
+                        sub={sub}
+                        onToggle={() => toggleSubtask(task.id, sub.id)}
+                        onDelete={() => deleteSubtask(task.id, sub.id)}
+                        onTogglePriority={() =>
+                          editSubtask(task.id, sub.id, {
+                            priority: (sub.priority === 'high' ? 'normal' : 'high') as Priority,
+                          })
+                        }
+                      />
+                    ))}
+                  </SortableContext>
+                </div>
+              </DndContext>
+            )}
+          </div>
+
+          {/* Notes */}
+          <div className="border-t border-border/50 py-4">
             <button
-              type="submit"
-              disabled={!newSubtask.trim()}
-              className="focus-ring rounded-xl bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
+              type="button"
+              onClick={() => setShowNotes(!showNotes)}
+              className="focus-ring rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
-              Add
+              {showNotes ? 'Hide notes' : task.notes ? 'Notes' : 'Add notes'}
             </button>
-          </form>
+
+            {showNotes && (
+              <textarea
+                rows={4}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => editTaskNotes(task.id, notes)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    e.currentTarget.blur();
+                  }
+                }}
+                placeholder="Notes"
+                className="mt-2 w-full resize-none rounded-xl border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
+              />
+            )}
+          </div>
         </div>
 
-        {/* Notes */}
-        <div className="mt-4 space-y-2 border-t border-border/50 pt-3">
+        {/* Adding a step stays reachable no matter how long the list gets */}
+        <form
+          onSubmit={handleAddSubtask}
+          className="flex shrink-0 items-center gap-2 border-t border-border/50 px-6 py-3"
+        >
+          <input
+            ref={subtaskInputRef}
+            type="text"
+            value={newSubtask}
+            onChange={(e) => setNewSubtask(e.target.value)}
+            placeholder="Add a step…"
+            className="flex-1 rounded-xl border border-border/60 bg-background px-3.5 py-2.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
+            autoComplete="off"
+          />
           <button
-            type="button"
-            onClick={() => setShowNotes(!showNotes)}
-            className="focus-ring flex items-center gap-1.5 rounded-md text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            type="submit"
+            disabled={!newSubtask.trim()}
+            className="focus-ring rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
           >
-            <FileText className="size-3.5" />
-            {showNotes ? 'Hide notes' : task.notes ? 'Notes' : 'Add notes'}
+            Add
           </button>
-
-          {showNotes && (
-            <textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={() => editTaskNotes(task.id, notes)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  e.stopPropagation();
-                  e.currentTarget.blur();
-                }
-              }}
-              placeholder="Notes"
-              className="w-full resize-none rounded-xl border border-border/60 bg-background p-2.5 text-xs leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
-            />
-          )}
-        </div>
+        </form>
 
         {/* Footer */}
-        <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3">
+        <div className="flex shrink-0 items-center justify-between border-t border-border/50 px-6 py-3">
           <button
-            onClick={() => {
-              deleteTask(task.id);
-              closeTaskDetailModal();
-            }}
+            onClick={() => requestDeleteTask(task.id)}
             className="focus-ring flex items-center gap-1 rounded-md text-xs font-medium text-destructive/80 transition-colors hover:text-destructive"
           >
             <Trash2 className="size-3.5" />
@@ -440,7 +437,7 @@ function SubtaskRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="group flex items-center gap-1.5 rounded-xl border border-border/50 bg-background px-2 py-1.5 text-xs transition-colors hover:border-foreground/30"
+      className="group flex items-center gap-2 rounded-xl border border-border/50 bg-background px-2.5 py-2.5 text-sm transition-colors hover:border-foreground/30"
     >
       <button
         {...attributes}
@@ -449,7 +446,7 @@ function SubtaskRow({
         title="Drag to reorder"
         aria-label="Reorder step"
       >
-        <GripVertical className="size-3" />
+        <GripVertical className="size-3.5" />
       </button>
 
       <button
@@ -459,17 +456,17 @@ function SubtaskRow({
         aria-label={sub.completed ? 'Mark as not done' : 'Mark done'}
       >
         {sub.completed ? (
-          <span className="flex size-3.5 items-center justify-center rounded-full bg-foreground text-background">
-            <Check className="size-2" strokeWidth={3} />
+          <span className="flex size-4 items-center justify-center rounded-full bg-foreground text-background">
+            <Check className="size-2.5" strokeWidth={3} />
           </span>
         ) : (
-          <Circle className="size-3.5" strokeWidth={1.5} />
+          <Circle className="size-4" strokeWidth={1.5} />
         )}
       </button>
 
       <span
-        className={`flex-1 truncate font-medium ${
-          sub.completed ? 'text-muted-foreground/50 line-through' : 'text-foreground'
+        className={`flex-1 truncate ${
+          sub.completed ? 'text-muted-foreground/50 line-through' : 'font-medium text-foreground'
         }`}
       >
         {sub.content}
@@ -486,7 +483,7 @@ function SubtaskRow({
         title={isHigh ? 'High priority — do this step first' : 'Mark high priority'}
         aria-label="Toggle high priority"
       >
-        <Flame className="size-3" fill={isHigh ? 'currentColor' : 'none'} />
+        <Flame className="size-3.5" fill={isHigh ? 'currentColor' : 'none'} />
       </button>
 
       <button
@@ -496,7 +493,7 @@ function SubtaskRow({
         title="Delete step"
         aria-label="Delete step"
       >
-        <X className="size-3" />
+        <X className="size-3.5" />
       </button>
     </div>
   );
@@ -595,7 +592,7 @@ function CalendarPicker({
         })}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border/50 pt-2.5 text-xs">
+      <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-2.5 text-xs">
         <div className="flex items-center gap-1">
           <Clock className="size-3 text-muted-foreground" />
           <select
@@ -636,7 +633,7 @@ function CalendarPicker({
           <button
             type="button"
             onClick={onCancel}
-            className="focus-ring rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="focus-ring rounded-lg px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             Cancel
           </button>

@@ -14,10 +14,10 @@ const fontSans = Geist({
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' });
 
 export const metadata: Metadata = {
-  title: 'FocusMatrix — one task at a time',
+  title: 'Slate',
   description:
     'Dump everything on your mind, sort it in seconds, then work on the single task that matters right now.',
-  applicationName: 'FocusMatrix',
+  applicationName: 'Slate',
 };
 
 export const viewport: Viewport = {

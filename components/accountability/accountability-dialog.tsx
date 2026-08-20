@@ -99,7 +99,7 @@ function AccountabilityForm({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+        className="fixed inset-0 bg-background/40 backdrop-blur-sm"
         onClick={closeAccountabilityModal}
       />
 
@@ -107,7 +107,7 @@ function AccountabilityForm({
         role="dialog"
         aria-modal="true"
         aria-label="What blocked this task"
-        className="card-depth animate-rise relative max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border/80 bg-card p-5"
+        className="glass animate-rise relative max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-2xl p-5"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

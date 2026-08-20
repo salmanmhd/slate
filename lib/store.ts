@@ -1,22 +1,54 @@
 import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
-import { AccountabilityLog, AppView, BlockerCategory, CompletionState, Priority, SubTask, Task, TaskStatus } from '@/types/matrix';
+import { AccountabilityLog, AppView, BlockerCategory, CategoryFilter, CompletionState, PomodoroSession, Priority, SubTask, Task, TaskCategory, TaskStatus } from '@/types/matrix';
 import { parseTaskInput } from './nlp-parser';
 
 const TASKS_STORAGE_KEY = 'focus_matrix_tasks_v1';
 const LOGS_STORAGE_KEY = 'focus_matrix_logs_v1';
+const SESSIONS_STORAGE_KEY = 'focus_matrix_sessions_v1';
+const TIMER_STORAGE_KEY = 'focus_matrix_timer_v1';
+
+/** A block older than this on restore is stale; it is dropped, never logged. */
+const STALE_BLOCK_MS = 12 * 3600_000;
+/** How far past its deadline a block may be found and still count as completed. */
+const GRACE_MS = 10 * 60_000;
 
 interface MatrixState {
   tasks: Task[];
   logs: AccountabilityLog[];
   isHydrated: boolean;
   activeView: AppView;
+  /**
+   * Which context you are working in. Session-only: a mode is about the hour
+   * you are in, not a setting worth restoring days later.
+   */
+  activeCategory: CategoryFilter;
+  setActiveCategory: (category: CategoryFilter) => void;
+  setTaskCategory: (taskId: string, category: TaskCategory | undefined) => void;
   activeModalTaskId: string | null;
   /** Live text in the Capture field. Held here so a keystroke typed anywhere
    *  in the app can land in it without a copy-into-local-state round trip. */
   captureDraft: string;
   accountabilityModalTask: Task | null;
   accountabilityModalResolutionDefault?: 'rescheduled' | 'eliminated' | 'marked_failed';
+
+  /**
+   * Session work timer. Held here rather than in FocusView so glancing at the
+   * matrix mid-block does not kill a running timer. Deliberately not persisted —
+   * a timer that survives a browser restart is a lie about when you sat down.
+   */
+  timer: TimerState;
+  setTimer: (patch: Partial<TimerState>) => void;
+  /** Start, or resume after a pause. The context is only read on a fresh start. */
+  startTimer: (context: TimerContext, durationMs?: number) => void;
+  pauseTimer: () => void;
+  /** Ran to zero. */
+  finishTimer: () => void;
+  /** Cut short, or the length was changed mid-block. */
+  stopTimer: (nextDurationMs?: number) => void;
+
+  sessions: PomodoroSession[];
+  recordSession: (outcome: 'completed' | 'abandoned') => void;
 
   hydrate: () => Promise<void>;
   setActiveView: (view: AppView) => void;
@@ -32,7 +64,14 @@ interface MatrixState {
   editTaskNotes: (id: string, notes: string) => void;
   editTaskDate: (id: string, rawDateInput: string) => void;
   editTaskExactDate: (id: string, isoDate: string | null) => void;
-  deleteTask: (id: string) => void;
+  /**
+   * Deletion is only reachable through a confirmation — there is deliberately
+   * no unguarded delete for a caller to reach for.
+   */
+  pendingDeleteTaskId: string | null;
+  requestDeleteTask: (id: string) => void;
+  cancelDeleteTask: () => void;
+  confirmDeleteTask: () => void;
   moveTask: (taskId: string, targetStatus: TaskStatus) => void;
   reorderTasks: (activeId: string, overId: string, status: TaskStatus) => void;
   toggleTaskCompletion: (taskId: string) => boolean;
@@ -59,11 +98,99 @@ interface MatrixState {
   clearAllData: () => Promise<void>;
 }
 
-const persistData = async (tasks: Task[], logs: AccountabilityLog[]) => {
+export const TIMER_PRESETS_MIN = [10, 25, 50] as const;
+const DEFAULT_TIMER_MS = 25 * 60_000;
+
+export interface TimerContext {
+  label: string;
+  taskId?: string;
+  source: 'focus' | 'pomodoro';
+}
+
+export interface TimerState {
+  durationMs: number;
+  /** Epoch ms at which the block ends. Non-null exactly while running. */
+  deadline: number | null;
+  /** Authoritative while paused; kept in step by the ticker while running. */
+  remainingMs: number;
+  finished: boolean;
+
+  /* Bookkeeping for the session this timer will log when it ends. */
+  label: string | null;
+  taskId: string | null;
+  source: 'focus' | 'pomodoro' | null;
+  /** Epoch ms of the first start. Non-null means a session is in flight. */
+  startedAt: number | null;
+  pausedMs: number;
+  pausedAt: number | null;
+  pauseCount: number;
+}
+
+const INITIAL_TIMER: TimerState = {
+  durationMs: DEFAULT_TIMER_MS,
+  deadline: null,
+  remainingMs: DEFAULT_TIMER_MS,
+  finished: false,
+  label: null,
+  taskId: null,
+  source: null,
+  startedAt: null,
+  pausedMs: 0,
+  pausedAt: null,
+  pauseCount: 0,
+};
+
+/**
+ * Written on start/pause/finish/stop only — never on the 500ms tick. Progress
+ * is rebuilt from the absolute deadline, so the ticks have nothing to save.
+ */
+const persistTimer = (timer: TimerState) => {
+  if (typeof window === 'undefined') return;
+  set(TIMER_STORAGE_KEY, timer).catch((err) =>
+    console.error('Failed to persist timer:', err)
+  );
+};
+
+/** Shared by live completion and by restoring a block that ended while away. */
+const buildSession = (
+  timer: TimerState,
+  outcome: 'completed' | 'abandoned',
+  endedAt: number
+): PomodoroSession | null => {
+  if (timer.startedAt === null || !timer.label) return null;
+
+  const pausedMs = timer.pausedMs + (timer.pausedAt ? endedAt - timer.pausedAt : 0);
+  // Wall clock minus every pause. Never trust the planned length.
+  const workedMs = Math.max(0, endedAt - timer.startedAt - pausedMs);
+
+  // A block barely begun is noise, not history.
+  if (workedMs < 30_000 && outcome === 'abandoned') return null;
+
+  return {
+    id: `ses-${endedAt}-${Math.random().toString(36).substring(2, 7)}`,
+    label: timer.label,
+    taskId: timer.taskId ?? undefined,
+    source: timer.source ?? 'pomodoro',
+    plannedMs: timer.durationMs,
+    startedAt: new Date(timer.startedAt).toISOString(),
+    endedAt: new Date(endedAt).toISOString(),
+    workedMs,
+    pausedMs,
+    pauseCount: timer.pauseCount,
+    outcome,
+  };
+};
+
+const persistData = async (
+  tasks: Task[],
+  logs: AccountabilityLog[],
+  sessions?: PomodoroSession[]
+) => {
   if (typeof window === 'undefined') return;
   try {
     await set(TASKS_STORAGE_KEY, tasks);
     await set(LOGS_STORAGE_KEY, logs);
+    if (sessions) await set(SESSIONS_STORAGE_KEY, sessions);
   } catch (err) {
     console.error('Failed to persist to IndexedDB:', err);
   }
@@ -74,19 +201,172 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   logs: [],
   isHydrated: false,
   activeView: 'focus',
+  activeCategory: 'all',
   activeModalTaskId: null,
   captureDraft: '',
   accountabilityModalTask: null,
   accountabilityModalResolutionDefault: 'rescheduled',
+
+  timer: INITIAL_TIMER,
+  sessions: [],
+  setTimer: (patch) => setStore({ timer: { ...getStore().timer, ...patch } }),
+
+  startTimer: (context, durationMs) => {
+    const timer = getStore().timer;
+    const now = Date.now();
+    const duration = durationMs ?? timer.durationMs;
+
+    // Resuming an in-flight block: close the pause and keep its history.
+    if (timer.startedAt !== null && durationMs === undefined) {
+      const remaining = timer.remainingMs > 0 ? timer.remainingMs : duration;
+      const next: TimerState = {
+        ...timer,
+        deadline: now + remaining,
+        remainingMs: remaining,
+        finished: false,
+        pausedMs: timer.pausedMs + (timer.pausedAt ? now - timer.pausedAt : 0),
+        pausedAt: null,
+      };
+      setStore({ timer: next });
+      persistTimer(next);
+      return;
+    }
+
+    // A fresh block. Anything still in flight is closed out first.
+    if (timer.startedAt !== null) getStore().stopTimer();
+
+    const next: TimerState = {
+      ...INITIAL_TIMER,
+      durationMs: duration,
+      remainingMs: duration,
+      deadline: now + duration,
+      startedAt: now,
+      label: context.label,
+      taskId: context.taskId ?? null,
+      source: context.source,
+    };
+    setStore({ timer: next });
+    persistTimer(next);
+  },
+
+  pauseTimer: () => {
+    const timer = getStore().timer;
+    if (timer.deadline === null) return;
+    const next: TimerState = {
+      ...timer,
+      remainingMs: Math.max(0, timer.deadline - Date.now()),
+      deadline: null,
+      pausedAt: Date.now(),
+      pauseCount: timer.pauseCount + 1,
+      finished: false,
+    };
+    setStore({ timer: next });
+    persistTimer(next);
+  },
+
+  finishTimer: () => {
+    const timer = getStore().timer;
+    setStore({ timer: { ...timer, deadline: null, remainingMs: 0, finished: true } });
+    getStore().recordSession('completed');
+
+    // Close the session out. The label and finished flag stay for the UI, but
+    // the bookkeeping must reset or the next block would count from this one's
+    // start time and log a wildly inflated duration.
+    const next: TimerState = {
+      ...getStore().timer,
+      startedAt: null,
+      pausedMs: 0,
+      pausedAt: null,
+      pauseCount: 0,
+    };
+    setStore({ timer: next });
+    persistTimer(next);
+  },
+
+  stopTimer: (nextDurationMs) => {
+    const timer = getStore().timer;
+    if (timer.startedAt !== null && !timer.finished) {
+      getStore().recordSession('abandoned');
+    }
+    const duration = nextDurationMs ?? timer.durationMs;
+    const next: TimerState = { ...INITIAL_TIMER, durationMs: duration, remainingMs: duration };
+    setStore({ timer: next });
+    persistTimer(next);
+  },
+
+  recordSession: (outcome) => {
+    const session = buildSession(getStore().timer, outcome, Date.now());
+    if (!session) return;
+
+    const nextSessions = [session, ...getStore().sessions];
+    setStore({ sessions: nextSessions });
+    persistData(getStore().tasks, getStore().logs, nextSessions);
+  },
 
   hydrate: async () => {
     if (typeof window === 'undefined') return;
     try {
       const storedTasks = await get<Task[]>(TASKS_STORAGE_KEY);
       const storedLogs = await get<AccountabilityLog[]>(LOGS_STORAGE_KEY);
+      const storedSessions = await get<PomodoroSession[]>(SESSIONS_STORAGE_KEY);
+      const storedTimer = await get<TimerState>(TIMER_STORAGE_KEY);
+
+      /**
+       * A reload is not the same as stopping work, so a running block is
+       * rebuilt from its absolute deadline and simply carries on.
+       *
+       * Blocks found already past their deadline are only credited if we are
+       * still within the grace window — beyond that we have no idea whether
+       * the time was actually worked, and inventing history would poison the
+       * one number Reflect is built on.
+       */
+      const now = Date.now();
+      let restoredTimer: TimerState = INITIAL_TIMER;
+      let sessions = storedSessions || [];
+      let creditedOnRestore = false;
+
+      if (storedTimer) {
+        const idle: TimerState = {
+          ...INITIAL_TIMER,
+          durationMs: storedTimer.durationMs,
+          remainingMs: storedTimer.durationMs,
+        };
+
+        if (storedTimer.startedAt === null) {
+          restoredTimer = idle;
+        } else if (now - storedTimer.startedAt > STALE_BLOCK_MS) {
+          restoredTimer = idle;
+        } else if (storedTimer.deadline === null) {
+          restoredTimer = storedTimer; // paused; resume picks up the pause clock
+        } else if (storedTimer.deadline > now) {
+          restoredTimer = { ...storedTimer, remainingMs: storedTimer.deadline - now };
+        } else if (now - storedTimer.deadline <= GRACE_MS) {
+          const session = buildSession(storedTimer, 'completed', storedTimer.deadline);
+          if (session) {
+            sessions = [session, ...sessions];
+            creditedOnRestore = true;
+          }
+          restoredTimer = {
+            ...storedTimer,
+            deadline: null,
+            remainingMs: 0,
+            finished: true,
+            startedAt: null,
+            pausedMs: 0,
+            pausedAt: null,
+            pauseCount: 0,
+          };
+        } else {
+          restoredTimer = idle;
+        }
+      }
+      const validCategories: TaskCategory[] = ['work', 'personal', 'content'];
       const sanitizedTasks = (storedTasks || []).map((t) => ({
         ...t,
         notes: t.notes || '',
+        // Tasks saved before categories existed simply have none.
+        category:
+          t.category && validCategories.includes(t.category) ? t.category : undefined,
         subtasks: (t.subtasks || []).map((s) => ({
           ...s,
           priority: s.priority || 'normal',
@@ -95,31 +375,50 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       setStore({
         tasks: sanitizedTasks,
         logs: storedLogs || [],
+        sessions,
+        timer: restoredTimer,
         isHydrated: true,
         // Land where the user actually has something to do: an empty app opens
         // on the blank page you can type into, otherwise straight into Focus.
         activeView: sanitizedTasks.length === 0 ? 'capture' : 'focus',
       });
+
+      // Persist the reconciled state so a second reload cannot credit the same
+      // block twice.
+      persistTimer(restoredTimer);
+      if (creditedOnRestore) {
+        persistData(sanitizedTasks, storedLogs || [], sessions);
+      }
     } catch (err) {
       console.error('Hydration error:', err);
-      setStore({ tasks: [], logs: [], isHydrated: true, activeView: 'capture' });
+      setStore({ tasks: [], logs: [], sessions: [], isHydrated: true, activeView: 'capture' });
     }
   },
 
   setActiveView: (view) => setStore({ activeView: view }),
+
+  setActiveCategory: (category) => setStore({ activeCategory: category }),
+
+  setTaskCategory: (taskId, category) => {
+    const nextTasks = getStore().tasks.map((t) => (t.id === taskId ? { ...t, category } : t));
+    setStore({ tasks: nextTasks });
+    persistData(nextTasks, getStore().logs);
+  },
   setCaptureDraft: (val) => setStore({ captureDraft: val }),
   appendCaptureDraft: (char) => setStore({ captureDraft: getStore().captureDraft + char }),
   openTaskDetailModal: (taskId) => setStore({ activeModalTaskId: taskId }),
   closeTaskDetailModal: () => setStore({ activeModalTaskId: null }),
 
   addTask: (rawInput, customStatus, initialSubtasks, initialNotes) => {
-    const { cleanedContent, parsedDate } = parseTaskInput(rawInput);
+    // Category comes only from an explicit #tag. Capture never guesses.
+    const { cleanedContent, parsedDate, category } = parseTaskInput(rawInput);
     const newTask: Task = {
       id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       content: cleanedContent || rawInput.trim(),
       originalRawInput: rawInput,
       parsedDate: parsedDate ? parsedDate.toISOString() : null,
       status: customStatus || 'inbox',
+      category: category ?? undefined,
       completionState: 'pending',
       createdAt: new Date().toISOString(),
       notes: initialNotes || '',
@@ -146,9 +445,19 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
 
   editTaskContent: (id, newContent) => {
     if (!newContent.trim()) return;
-    const nextTasks = getStore().tasks.map((t) =>
-      t.id === id ? { ...t, content: newContent.trim() } : t
-    );
+    // Rewriting a title reads dates and #tags out of it, exactly as capture
+    // does — typing "today 6pm" into the title should set the deadline.
+    const { cleanedContent, parsedDate, category } = parseTaskInput(newContent);
+    const nextTasks = getStore().tasks.map((t) => {
+      if (t.id !== id) return t;
+      return {
+        ...t,
+        content: cleanedContent || newContent.trim(),
+        // Only overwrite when the new text actually carried one.
+        parsedDate: parsedDate ? parsedDate.toISOString() : t.parsedDate,
+        category: category ?? t.category,
+      };
+    });
     setStore({ tasks: nextTasks });
     persistData(nextTasks, getStore().logs);
   },
@@ -178,9 +487,20 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     persistData(nextTasks, getStore().logs);
   },
 
-  deleteTask: (id) => {
+  pendingDeleteTaskId: null,
+  requestDeleteTask: (id) => setStore({ pendingDeleteTaskId: id }),
+  cancelDeleteTask: () => setStore({ pendingDeleteTaskId: null }),
+
+  confirmDeleteTask: () => {
+    const id = getStore().pendingDeleteTaskId;
+    if (!id) return;
     const nextTasks = getStore().tasks.filter((t) => t.id !== id);
-    setStore({ tasks: nextTasks });
+    setStore({
+      tasks: nextTasks,
+      pendingDeleteTaskId: null,
+      // The detail modal cannot outlive the task it is showing.
+      activeModalTaskId: getStore().activeModalTaskId === id ? null : getStore().activeModalTaskId,
+    });
     persistData(nextTasks, getStore().logs);
   },
 
@@ -361,7 +681,8 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   },
 
   clearAllData: async () => {
-    await persistData([], []);
-    setStore({ tasks: [], logs: [] });
+    await persistData([], [], []);
+    persistTimer(INITIAL_TIMER);
+    setStore({ tasks: [], logs: [], sessions: [], timer: INITIAL_TIMER });
   },
 }));
