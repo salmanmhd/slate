@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { UserButton } from '@clerk/nextjs';
 import { useMatrixStore } from '@/lib/store';
 import { AppView } from '@/types/matrix';
 import { useTheme } from 'next-themes';
@@ -134,16 +135,21 @@ export function Header() {
           })}
         </nav>
 
-        {/* Theme — icons swap via the .dark class so there is no mount flicker */}
-        <button
-          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-          className="focus-ring rounded-lg border border-border/50 bg-card/40 p-1.5 text-muted-foreground transition-colors hover:text-foreground"
-          title="Toggle theme"
-          aria-label="Toggle theme"
-        >
-          <Moon className="size-3.5 dark:hidden" />
-          <Sun className="hidden size-3.5 dark:block" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Theme — icons swap via the .dark class so there is no mount flicker */}
+          <button
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            className="focus-ring rounded-lg border border-border/50 bg-card/40 p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            <Moon className="size-3.5 dark:hidden" />
+            <Sun className="hidden size-3.5 dark:block" />
+          </button>
+
+          {/* Account. Sized to sit level with the theme button, not tower over it. */}
+          <UserButton appearance={{ elements: { avatarBox: 'size-7' } }} />
+        </div>
       </div>
     </header>
   );

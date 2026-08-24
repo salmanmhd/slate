@@ -2,11 +2,24 @@ import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
 import { AccountabilityLog, AppView, BlockerCategory, CategoryFilter, CompletionState, PomodoroSession, Priority, SubTask, Task, TaskCategory, TaskStatus } from '@/types/matrix';
 import { parseTaskInput } from './nlp-parser';
+import { configureSync, flushSync, pullRemoteState, resetSync, scheduleSync } from './sync';
 
 const TASKS_STORAGE_KEY = 'focus_matrix_tasks_v1';
 const LOGS_STORAGE_KEY = 'focus_matrix_logs_v1';
 const SESSIONS_STORAGE_KEY = 'focus_matrix_sessions_v1';
 const TIMER_STORAGE_KEY = 'focus_matrix_timer_v1';
+/** Set once this account's cache has been reconciled with the server at least once. */
+const SYNCED_MARKER_KEY = 'focus_matrix_synced_v1';
+
+/**
+ * MongoDB is the source of truth now that accounts exist; IndexedDB is kept as
+ * a per-user cache so the app opens instantly and keeps working offline.
+ *
+ * Keys are scoped by account — two people signing in on the same browser must
+ * never see each other's cached tasks.
+ */
+let activeUserId: string | null = null;
+const scopedKey = (base: string) => (activeUserId ? `${base}::${activeUserId}` : base);
 
 /** A block older than this on restore is stale; it is dropped, never logged. */
 const STALE_BLOCK_MS = 12 * 3600_000;
@@ -50,7 +63,10 @@ interface MatrixState {
   sessions: PomodoroSession[];
   recordSession: (outcome: 'completed' | 'abandoned') => void;
 
-  hydrate: () => Promise<void>;
+  /** Loads the signed-in account's data. Server first, local cache as fallback. */
+  hydrate: (userId: string) => Promise<void>;
+  /** Wipes in-memory state when the session ends, so nothing leaks to the next user. */
+  resetForSignOut: () => void;
   setActiveView: (view: AppView) => void;
   setCaptureDraft: (val: string) => void;
   appendCaptureDraft: (char: string) => void;
@@ -64,6 +80,8 @@ interface MatrixState {
   editTaskNotes: (id: string, notes: string) => void;
   editTaskDate: (id: string, rawDateInput: string) => void;
   editTaskExactDate: (id: string, isoDate: string | null) => void;
+  /** Push a task out of Focus until `until`. Its deadline is untouched. */
+  deferTask: (id: string, until: string | null) => void;
   /**
    * Deletion is only reachable through a confirmation — there is deliberately
    * no unguarded delete for a caller to reach for.
@@ -82,6 +100,8 @@ interface MatrixState {
   deleteSubtask: (taskId: string, subtaskId: string) => void;
   editSubtask: (taskId: string, subtaskId: string, updates: Partial<SubTask>) => void;
   reorderSubtasks: (taskId: string, fromIndex: number, toIndex: number) => void;
+  /** "I can't do this step right now" — send it to the back of the queue. */
+  deferSubtask: (taskId: string, subtaskId: string) => void;
   moveSubtaskPriority: (taskId: string, subtaskId: string, direction: 'up' | 'down') => void;
 
   // Accountability
@@ -146,7 +166,9 @@ const INITIAL_TIMER: TimerState = {
  */
 const persistTimer = (timer: TimerState) => {
   if (typeof window === 'undefined') return;
-  set(TIMER_STORAGE_KEY, timer).catch((err) =>
+  // Deliberately local-only: a running block belongs to the machine you sat
+  // down at, so it is never synced to the account.
+  set(scopedKey(TIMER_STORAGE_KEY), timer).catch((err) =>
     console.error('Failed to persist timer:', err)
   );
 };
@@ -181,19 +203,38 @@ const buildSession = (
   };
 };
 
-const persistData = async (
+/**
+ * Writes the local cache and queues a debounced push to the account. The cache
+ * write is awaited so callers keep their existing guarantees; the server write
+ * is fire-and-forget so no mutation ever waits on the network.
+ */
+const writeLocalCache = async (
   tasks: Task[],
   logs: AccountabilityLog[],
   sessions?: PomodoroSession[]
 ) => {
   if (typeof window === 'undefined') return;
   try {
-    await set(TASKS_STORAGE_KEY, tasks);
-    await set(LOGS_STORAGE_KEY, logs);
-    if (sessions) await set(SESSIONS_STORAGE_KEY, sessions);
+    await set(scopedKey(TASKS_STORAGE_KEY), tasks);
+    await set(scopedKey(LOGS_STORAGE_KEY), logs);
+    if (sessions) await set(scopedKey(SESSIONS_STORAGE_KEY), sessions);
   } catch (err) {
     console.error('Failed to persist to IndexedDB:', err);
   }
+};
+
+/**
+ * Writes the local cache and queues a debounced push to the account. The cache
+ * write is awaited so callers keep their existing guarantees; the server write
+ * is fire-and-forget, so no mutation ever waits on the network.
+ */
+const persistData = async (
+  tasks: Task[],
+  logs: AccountabilityLog[],
+  sessions?: PomodoroSession[]
+) => {
+  await writeLocalCache(tasks, logs, sessions);
+  if (activeUserId) scheduleSync();
 };
 
 export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
@@ -303,13 +344,67 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     persistData(getStore().tasks, getStore().logs, nextSessions);
   },
 
-  hydrate: async () => {
+  hydrate: async (userId) => {
     if (typeof window === 'undefined') return;
+
+    activeUserId = userId;
+    // The sync layer reads the live store rather than being handed a snapshot,
+    // so a push always sends the newest state, not the state at queue time.
+    configureSync(() => {
+      const { tasks, logs, sessions } = getStore();
+      return { tasks, logs, sessions };
+    });
+
     try {
-      const storedTasks = await get<Task[]>(TASKS_STORAGE_KEY);
-      const storedLogs = await get<AccountabilityLog[]>(LOGS_STORAGE_KEY);
-      const storedSessions = await get<PomodoroSession[]>(SESSIONS_STORAGE_KEY);
-      const storedTimer = await get<TimerState>(TIMER_STORAGE_KEY);
+      let localTasks = await get<Task[]>(scopedKey(TASKS_STORAGE_KEY));
+      let localLogs = await get<AccountabilityLog[]>(scopedKey(LOGS_STORAGE_KEY));
+      let localSessions = await get<PomodoroSession[]>(scopedKey(SESSIONS_STORAGE_KEY));
+      const storedTimer = await get<TimerState>(scopedKey(TIMER_STORAGE_KEY));
+      const hasSyncedBefore = (await get<boolean>(scopedKey(SYNCED_MARKER_KEY))) === true;
+
+      /**
+       * Data captured before accounts existed sits under the old unscoped keys.
+       * The first account to sign in on this browser adopts it, once — losing
+       * someone's existing task list to a login would be indefensible.
+       */
+      if (!localTasks && !localLogs && !localSessions) {
+        const legacyTasks = await get<Task[]>(TASKS_STORAGE_KEY);
+        const legacyLogs = await get<AccountabilityLog[]>(LOGS_STORAGE_KEY);
+        const legacySessions = await get<PomodoroSession[]>(SESSIONS_STORAGE_KEY);
+        if (legacyTasks?.length || legacyLogs?.length || legacySessions?.length) {
+          localTasks = legacyTasks;
+          localLogs = legacyLogs;
+          localSessions = legacySessions;
+        }
+      }
+
+      /**
+       * The account is authoritative. Local data only wins when the server has
+       * nothing *and* this cache has never been pushed — otherwise an account
+       * cleared on another device would be resurrected by a stale cache.
+       */
+      let remote: { tasks: Task[]; logs: AccountabilityLog[]; sessions: PomodoroSession[] } | null =
+        null;
+      try {
+        remote = await pullRemoteState();
+      } catch (err) {
+        console.warn('Could not reach the server; opening from the local cache.', err);
+      }
+
+      const remoteIsEmpty =
+        !remote || (!remote.tasks.length && !remote.logs.length && !remote.sessions.length);
+      const localHasData = !!(localTasks?.length || localLogs?.length || localSessions?.length);
+      /** Local data that the server has never seen — push it up after hydrating. */
+      const needsInitialPush = !!remote && remoteIsEmpty && !hasSyncedBefore && localHasData;
+      const useRemote = !!remote && !needsInitialPush;
+
+      const sourceTasks = (useRemote ? remote!.tasks : localTasks) || [];
+      const sourceLogs = (useRemote ? remote!.logs : localLogs) || [];
+      const sourceSessions = (useRemote ? remote!.sessions : localSessions) || [];
+
+      if (remote) {
+        await set(scopedKey(SYNCED_MARKER_KEY), true).catch(() => {});
+      }
 
       /**
        * A reload is not the same as stopping work, so a running block is
@@ -322,7 +417,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
        */
       const now = Date.now();
       let restoredTimer: TimerState = INITIAL_TIMER;
-      let sessions = storedSessions || [];
+      let sessions = sourceSessions;
       let creditedOnRestore = false;
 
       if (storedTimer) {
@@ -361,12 +456,13 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
         }
       }
       const validCategories: TaskCategory[] = ['work', 'personal', 'content'];
-      const sanitizedTasks = (storedTasks || []).map((t) => ({
+      const sanitizedTasks = sourceTasks.map((t) => ({
         ...t,
         notes: t.notes || '',
         // Tasks saved before categories existed simply have none.
         category:
           t.category && validCategories.includes(t.category) ? t.category : undefined,
+        deferUntil: typeof t.deferUntil === 'string' ? t.deferUntil : undefined,
         subtasks: (t.subtasks || []).map((s) => ({
           ...s,
           priority: s.priority || 'normal',
@@ -374,7 +470,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       }));
       setStore({
         tasks: sanitizedTasks,
-        logs: storedLogs || [],
+        logs: sourceLogs,
         sessions,
         timer: restoredTimer,
         isHydrated: true,
@@ -386,8 +482,15 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       // Persist the reconciled state so a second reload cannot credit the same
       // block twice.
       persistTimer(restoredTimer);
-      if (creditedOnRestore) {
-        persistData(sanitizedTasks, storedLogs || [], sessions);
+
+      if (needsInitialPush || creditedOnRestore) {
+        // Either local data the account has never seen, or a block credited on
+        // restore — both have to reach the server, not just the cache.
+        persistData(sanitizedTasks, sourceLogs, sessions);
+      } else if (useRemote) {
+        // Refresh the cache from the server without provoking a pointless
+        // write-back of data that just came from there.
+        writeLocalCache(sanitizedTasks, sourceLogs, sessions);
       }
     } catch (err) {
       console.error('Hydration error:', err);
@@ -482,6 +585,14 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   editTaskExactDate: (id, isoDate) => {
     const nextTasks = getStore().tasks.map((t) =>
       t.id === id ? { ...t, parsedDate: isoDate } : t
+    );
+    setStore({ tasks: nextTasks });
+    persistData(nextTasks, getStore().logs);
+  },
+
+  deferTask: (id, until) => {
+    const nextTasks = getStore().tasks.map((t) =>
+      t.id === id ? { ...t, deferUntil: until ?? undefined } : t
     );
     setStore({ tasks: nextTasks });
     persistData(nextTasks, getStore().logs);
@@ -614,6 +725,26 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     persistData(nextTasks, getStore().logs);
   },
 
+  deferSubtask: (taskId, subtaskId) => {
+    const nextTasks = getStore().tasks.map((t) => {
+      if (t.id !== taskId || !t.subtasks) return t;
+      const target = t.subtasks.find((s) => s.id === subtaskId);
+      if (!target) return t;
+
+      return {
+        ...t,
+        subtasks: [
+          ...t.subtasks.filter((s) => s.id !== subtaskId),
+          // Demote high priority too, or Focus would sort it straight back
+          // to the front and the skip would appear to do nothing.
+          { ...target, priority: target.priority === 'high' ? 'normal' : target.priority },
+        ],
+      };
+    });
+    setStore({ tasks: nextTasks });
+    persistData(nextTasks, getStore().logs);
+  },
+
   moveSubtaskPriority: (taskId, subtaskId, direction) => {
     const priorities: Priority[] = ['high', 'normal', 'low'];
     const nextTasks = getStore().tasks.map((t) => {
@@ -667,8 +798,18 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
         t.id === taskId ? { ...t, status: 'eliminate' as TaskStatus, completionState: 'failed' as CompletionState, failureReason: reason, blockerCategory: category } : t
       );
     } else if (resolution === 'rescheduled') {
+      // Defers the task out of Focus and leaves the deadline alone. Writing the
+      // new time into parsedDate would silently destroy a real deadline — a
+      // task due Friday that you push to Tuesday is still due Friday.
       updatedTasks = updatedTasks.map((t) =>
-        t.id === taskId ? { ...t, parsedDate: newDueDate || new Date(Date.now() + 24 * 3600 * 1000).toISOString(), failureReason: reason, blockerCategory: category } : t
+        t.id === taskId
+          ? {
+              ...t,
+              deferUntil: newDueDate || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+              failureReason: reason,
+              blockerCategory: category,
+            }
+          : t
       );
     } else if (resolution === 'marked_failed') {
       updatedTasks = updatedTasks.map((t) =>
@@ -681,8 +822,30 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   },
 
   clearAllData: async () => {
+    setStore({ tasks: [], logs: [], sessions: [], timer: INITIAL_TIMER });
     await persistData([], [], []);
     persistTimer(INITIAL_TIMER);
-    setStore({ tasks: [], logs: [], sessions: [], timer: INITIAL_TIMER });
+    // Deleting everything is deliberate and one-way, so it does not wait on the
+    // debounce — the account is emptied before this resolves.
+    if (activeUserId) await flushSync();
+  },
+
+  resetForSignOut: () => {
+    // Any queued push is dropped rather than sent: the next request would carry
+    // whichever session is now active, and writing one account's tasks into
+    // another is far worse than losing the last second of edits.
+    resetSync();
+    activeUserId = null;
+    setStore({
+      tasks: [],
+      logs: [],
+      sessions: [],
+      timer: INITIAL_TIMER,
+      isHydrated: false,
+      activeModalTaskId: null,
+      accountabilityModalTask: null,
+      pendingDeleteTaskId: null,
+      captureDraft: '',
+    });
   },
 }));

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@clerk/ui/themes/shadcn.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -37,6 +38,18 @@
   --q-schedule: oklch(0.54 0.14 250);
   --q-delegate: oklch(0.64 0.14 70);
   --q-eliminate: oklch(0.58 0.012 260);
+
+  /* Glass material. Written as explicit oklch with alpha rather than
+     color-mix(..., transparent): `transparent` is rgb(0 0 0 / 0), whose oklch
+     hue is 0 — red — and hue is interpolated as an angle without being
+     premultiplied by alpha, so every mix drags the panel off toward red. */
+  --glass-top: oklch(1 0 0 / 0.9);
+  --glass-bottom: oklch(0.985 0.002 260 / 0.82);
+  --glass-sheen: oklch(1 0 0 / 0.5);
+  --glass-highlight: oklch(1 0 0 / 0.85);
+  --glass-underside: oklch(0.16 0.015 260 / 0.05);
+  --glass-border: oklch(0.16 0.015 260 / 0.1);
+  --glass-lift: 1.02;
 }
 
 .dark {
@@ -69,6 +82,14 @@
   --q-schedule: oklch(0.7 0.12 250);
   --q-delegate: oklch(0.78 0.13 70);
   --q-eliminate: oklch(0.6 0.012 260);
+
+  --glass-top: oklch(0.21 0.012 260 / 0.82);
+  --glass-bottom: oklch(0.175 0.012 260 / 0.76);
+  --glass-sheen: oklch(1 0 0 / 0.1);
+  --glass-highlight: oklch(1 0 0 / 0.16);
+  --glass-underside: oklch(0 0 0 / 0.3);
+  --glass-border: oklch(1 0 0 / 0.12);
+  --glass-lift: 1.15;
 }
 
 @theme inline {
@@ -186,37 +207,41 @@
    saturation lift keeps colour alive through the blur, and the inset top edge
    is the specular highlight that stops it reading as flat frosted plastic. */
 .glass {
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklch, var(--card) 80%, transparent),
-    color-mix(in oklch, var(--card) 62%, transparent)
-  );
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  /* Two background layers, painted under the content so no pseudo-element can
+     wash the text out: a specular sheen falling from just above the top edge,
+     over the body of the pane itself. */
+  background:
+    radial-gradient(125% 85% at 50% -15%, var(--glass-sheen), transparent 55%),
+    linear-gradient(180deg, var(--glass-top), var(--glass-bottom));
+
+  /* Heavy blur reads as thickness; the saturation and brightness lift keep
+     what is behind alive through it instead of flattening to grey. */
+  backdrop-filter: blur(44px) saturate(140%) brightness(var(--glass-lift));
+  -webkit-backdrop-filter: blur(44px) saturate(140%) brightness(var(--glass-lift));
+
+  border: 1px solid var(--glass-border);
   box-shadow:
-    0 32px 64px -16px rgb(0 0 0 / 0.28),
-    0 2px 8px -2px rgb(0 0 0 / 0.12),
-    inset 0 1px 0 color-mix(in oklch, white 65%, transparent);
+    /* ambient depth, then a tight contact shadow */
+    0 40px 80px -24px rgb(0 0 0 / 0.32),
+    0 3px 10px -2px rgb(0 0 0 / 0.12),
+    /* lit top edge and shaded underside — the pair that reads as a pane with
+       real thickness rather than a flat frosted film */
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-underside);
 }
 
 .dark .glass {
-  background: linear-gradient(
-    to bottom,
-    color-mix(in oklch, var(--card) 74%, transparent),
-    color-mix(in oklch, var(--card) 54%, transparent)
-  );
-  border-color: color-mix(in oklch, white 14%, transparent);
   box-shadow:
-    0 32px 64px -16px rgb(0 0 0 / 0.65),
-    0 2px 8px -2px rgb(0 0 0 / 0.4),
-    inset 0 1px 0 color-mix(in oklch, white 16%, transparent);
+    0 40px 80px -24px rgb(0 0 0 / 0.7),
+    0 3px 10px -2px rgb(0 0 0 / 0.45),
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-underside);
 }
 
 /* Without backdrop-filter the pane would be see-through and unreadable. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
-    background: var(--card);
+    background: var(--popover);
   }
 }
 

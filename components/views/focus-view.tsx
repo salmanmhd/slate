@@ -5,12 +5,13 @@ import { useMatrixStore } from '@/lib/store';
 import { SubTask, Task, TaskStatus } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { useNow, isOverdue } from '@/hooks/use-now';
+import { DEFER_PRESETS, isDeferred, formatDeferLabel } from '@/lib/defer';
 import { useIdleReveal } from '@/hooks/use-idle-reveal';
 import { useSessionTimer } from '@/hooks/use-session-timer';
 import { FocusTimer } from '@/components/focus-timer';
 import confetti from 'canvas-confetti';
 import { CATEGORY_BY_ID } from '@/lib/categories';
-import { Check, Inbox, PenLine, Layers } from 'lucide-react';
+import { Check, Inbox, PenLine, Layers, CalendarClock, Pencil } from 'lucide-react';
 
 /** Everything that is not the task itself hides while the pointer is still. */
 const VEIL = 'transition-opacity duration-500 motion-reduce:transition-none';
@@ -45,20 +46,39 @@ export function FocusView() {
     return () => document.body.classList.remove('focus-resting');
   }, [revealed]);
 
-  // Strictly the context chosen on Decide: pick Work and only work surfaces,
-  // even if that means nothing surfaces at all.
-  const currentTask = React.useMemo(() => {
+  const { currentTask, nextAvailableAt } = React.useMemo(() => {
+    // Strictly the context chosen on Decide: pick Work and only work surfaces,
+    // even if that means nothing surfaces at all.
     const pending = tasks.filter(
       (t) =>
         t.completionState === 'pending' &&
         (activeCategory === 'all' || t.category === activeCategory)
     );
-    for (const status of FOCUS_ORDER) {
-      const next = pending.find((t) => t.status === status);
-      if (next) return next;
-    }
-    return undefined;
-  }, [tasks, activeCategory]);
+
+    // A deferral is the only thing that hides a task. A deadline says when it
+    // must be *finished*, so it must never stop you starting early.
+    const available = pending.filter((t) => !isDeferred(t, now));
+
+    // Q1 → Q2 → Q3 → Q4, and within a quadrant an overdue task comes first;
+    // everything else keeps the order you dragged it into. Written as a fold
+    // rather than a loop with an early return, which the compiler cannot memo.
+    const next = FOCUS_ORDER.reduce<Task | undefined>((found, status) => {
+      if (found) return found;
+      const inQuadrant = available.filter((t) => t.status === status);
+      const overdue = inQuadrant.find(
+        (t) => t.parsedDate && new Date(t.parsedDate).getTime() < now
+      );
+      return overdue ?? inQuadrant[0];
+    }, undefined);
+
+    // When nothing is available, say when the first thing wakes up.
+    const wakes = pending
+      .filter((t) => isDeferred(t, now))
+      .map((t) => new Date(t.deferUntil as string).getTime())
+      .sort((a, b) => a - b);
+
+    return { currentTask: next, nextAvailableAt: wakes[0] ?? null };
+  }, [tasks, activeCategory, now]);
 
   // A block started here is logged against whatever task is on screen.
   const timerContext = React.useMemo(
@@ -117,7 +137,7 @@ export function FocusView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [isPristine, startAndJump, activeModalTaskId, accountabilityModalTask]);
 
-  if (!currentTask) return <FocusEmptyState />;
+  if (!currentTask) return <FocusEmptyState nextAvailableAt={nextAvailableAt} now={now} />;
 
   return (
     <>
@@ -149,17 +169,25 @@ function TodayStamp({ now, revealed }: { now: number; revealed: boolean }) {
 /* ──────── The single task on screen ──────── */
 
 function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
-  const { toggleTaskCompletion, toggleSubtask, openTaskDetailModal, openAccountabilityModal } =
-    useMatrixStore();
+  const {
+    toggleTaskCompletion,
+    toggleSubtask,
+    deferSubtask,
+    deferTask,
+    openTaskDetailModal,
+    openAccountabilityModal,
+  } = useMatrixStore();
 
   const [showNotes, setShowNotes] = React.useState(false);
+  const [showLater, setShowLater] = React.useState(false);
+  const now = useNow();
 
   const subtasks = React.useMemo(() => task.subtasks ?? [], [task.subtasks]);
   const ordered = React.useMemo(() => orderSteps(subtasks), [subtasks]);
   const remaining = ordered.filter((s) => !s.completed);
   const activeStep = remaining[0];
 
-  const overdue = isOverdue(task.parsedDate, useNow());
+  const overdue = isOverdue(task.parsedDate, now);
 
   /**
    * A step earns a small pop; finishing the whole task earns a proper burst.
@@ -204,13 +232,7 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
       {/* Which task this step belongs to, and when it is due */}
       <div className={`flex min-h-4 items-center justify-center gap-3 ${veil(revealed)}`}>
         {activeStep && (
-          <button
-            onClick={() => openTaskDetailModal(task.id)}
-            className="focus-ring min-w-0 truncate rounded-md text-left text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
-            title="Open task"
-          >
-            {task.content}
-          </button>
+          <p className="min-w-0 truncate text-xs text-muted-foreground/60">{task.content}</p>
         )}
         {task.parsedDate && (
           <span
@@ -237,24 +259,21 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
         </div>
       )}
 
-      {/* The task sits centred, its tick surfacing on hover to the right */}
+      {/* The task sits centred, edit surfacing on hover to the left and the
+          tick to the right. Both reserve their space, so nothing shifts. */}
       <div className="group flex items-start gap-4">
-        {/* Balances the tick so the text is centred on the column, not shoved left */}
-        <span className="size-6 shrink-0 sm:size-7" aria-hidden />
+        <button
+          onClick={() => openTaskDetailModal(task.id)}
+          className="focus-ring mt-1.5 flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground/40 opacity-0 transition-all group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100 sm:mt-2.5 sm:size-7"
+          title="Edit task, steps and notes"
+          aria-label="Edit task"
+        >
+          <Pencil className="size-4" />
+        </button>
 
-        {activeStep ? (
-          <h1 className="font-heading flex-1 text-center text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground sm:text-[2.6rem]">
-            {activeStep.content}
-          </h1>
-        ) : (
-          <button
-            onClick={() => openTaskDetailModal(task.id)}
-            className="focus-ring font-heading flex-1 text-center text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground transition-colors hover:text-foreground/70 sm:text-[2.6rem]"
-            title="Open task"
-          >
-            {task.content}
-          </button>
-        )}
+        <h1 className="font-heading flex-1 text-center text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground sm:text-[2.6rem]">
+          {activeStep ? activeStep.content : task.content}
+        </h1>
 
         <button
           onClick={complete}
@@ -268,10 +287,54 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
         </button>
       </div>
 
-      <div className={`flex items-center justify-center gap-4 ${veil(revealed)}`}>
+      <div className={`flex flex-wrap items-center justify-center gap-4 ${veil(revealed)}`}>
+        {/* Quick push, no form to fill in. The deadline stays where it is. */}
+        {showLater ? (
+          <span className="flex items-center gap-2.5">
+            {DEFER_PRESETS.filter((p) => p.available(now)).map((preset) => (
+              <button
+                key={preset.label}
+                onClick={() => {
+                  deferTask(task.id, preset.at(now).toISOString());
+                  setShowLater(false);
+                }}
+                className="focus-ring rounded-md text-xs font-medium text-foreground/70 transition-colors hover:text-foreground"
+              >
+                {preset.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowLater(false)}
+              className="focus-ring rounded-md text-xs text-muted-foreground/40 transition-colors hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setShowLater(true)}
+            className="focus-ring rounded-md text-xs text-muted-foreground/50 transition-colors hover:text-foreground"
+            title="Push this task out of Focus for a while"
+          >
+            Later
+          </button>
+        )}
+
+        {/* Blocked on this one step, not the whole task */}
+        {activeStep && remaining.length > 1 && (
+          <button
+            onClick={() => deferSubtask(task.id, activeStep.id)}
+            className="focus-ring rounded-md text-xs text-muted-foreground/50 transition-colors hover:text-foreground"
+            title="Send this step to the back and show the next one"
+          >
+            Skip step
+          </button>
+        )}
+
         <button
           onClick={() => openAccountabilityModal(task, 'rescheduled')}
           className="focus-ring rounded-md text-xs text-muted-foreground/50 transition-colors hover:text-foreground"
+          title="Name what is blocking the whole task"
         >
           I&apos;m stuck
         </button>
@@ -299,7 +362,13 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
 
 /* ──────── Empty states ──────── */
 
-function FocusEmptyState() {
+function FocusEmptyState({
+  nextAvailableAt,
+  now,
+}: {
+  nextAvailableAt: number | null;
+  now: number;
+}) {
   const { tasks, setActiveView, activeCategory } = useMatrixStore();
 
   const pending = tasks.filter((t) => t.completionState === 'pending');
@@ -315,6 +384,12 @@ function FocusEmptyState() {
     // The mode is empty. Say which mode, and point at the page that owns it.
     icon = <Layers className="size-5" />;
     title = `Nothing in ${CATEGORY_BY_ID[activeCategory].label}`;
+    cta = { label: 'Open Decide', action: () => setActiveView('decide') };
+  } else if (nextAvailableAt !== null) {
+    // Work exists, but you pushed all of it later. Name the hour it comes
+    // back rather than claiming you are finished.
+    icon = <CalendarClock className="size-5" />;
+    title = `Nothing until ${formatDeferLabel(new Date(nextAvailableAt).toISOString(), now)}`;
     cta = { label: 'Open Decide', action: () => setActiveView('decide') };
   } else if (unsorted > 0) {
     icon = <Inbox className="size-5" />;

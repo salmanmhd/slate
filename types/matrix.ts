@@ -48,7 +48,10 @@ export interface Task {
   id: string;
   content: string;
   originalRawInput?: string;
+  /** Deadline — when it must be *finished*. Never hides a task from Focus. */
   parsedDate: string | null;
+  /** "Not before" — while this is in the future, Focus skips the task. */
+  deferUntil?: string;
   status: TaskStatus;
   category?: TaskCategory;
   completionState: CompletionState;

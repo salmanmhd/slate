@@ -1,48 +1,13 @@
-'use client';
+import { auth } from '@clerk/nextjs/server';
+import { SlateApp } from '@/components/slate-app';
 
-import React from 'react';
-import { useMatrixStore } from '@/lib/store';
-import { Header } from '@/components/header';
-import { CaptureView } from '@/components/views/capture-view';
-import { DecideView } from '@/components/views/decide-view';
-import { FocusView } from '@/components/views/focus-view';
-import { PomodoroView } from '@/components/views/pomodoro-view';
-import { AnalyzerView } from '@/components/analyzer/analyzer-view';
-import { AccountabilityDialog } from '@/components/accountability/accountability-dialog';
-import { TaskDetailModal } from '@/components/task-detail-modal';
-import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
-
-export default function SlateApp() {
-  const { isHydrated, hydrate, activeView } = useMatrixStore();
-
-  React.useEffect(() => {
-    hydrate();
-  }, [hydrate]);
-
-  if (!isHydrated) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="size-4 rounded-full border-2 border-foreground/15 border-t-foreground/50 animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <Header />
-      <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8">
-        {/* Keyed so switching views cross-fades instead of snapping */}
-        <div key={activeView} className="animate-fade">
-          {activeView === 'capture' && <CaptureView />}
-          {activeView === 'decide' && <DecideView />}
-          {activeView === 'focus' && <FocusView />}
-          {activeView === 'timer' && <PomodoroView />}
-          {activeView === 'reflect' && <AnalyzerView />}
-        </div>
-      </main>
-      <AccountabilityDialog />
-      <TaskDetailModal />
-      <ConfirmDeleteDialog />
-    </div>
-  );
+/**
+ * The auth check lives here rather than in the proxy: path matching in
+ * middleware can drift from how Next.js actually routes a request, so the
+ * guard sits on the resource it protects. Unauthenticated visitors are
+ * redirected to sign-in before any task data is requested.
+ */
+export default async function Page() {
+  await auth.protect();
+  return <SlateApp />;
 }

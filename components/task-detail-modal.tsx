@@ -21,6 +21,8 @@ import { useMatrixStore } from '@/lib/store';
 import { Priority, SubTask, Task, TaskCategory } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
+import { DEFER_PRESETS, isDeferred, formatDeferLabel } from '@/lib/defer';
+import { useNow } from '@/hooks/use-now';
 import {
   X,
   Calendar as CalendarIcon,
@@ -33,6 +35,7 @@ import {
   Flame,
   Check,
   Circle,
+  Moon,
 } from 'lucide-react';
 import {
   format,
@@ -65,6 +68,7 @@ function TaskDetailContent({ task }: { task: Task }) {
     editTaskContent,
     editTaskNotes,
     editTaskExactDate,
+    deferTask,
     setTaskCategory,
     requestDeleteTask,
     addSubtask,
@@ -81,6 +85,7 @@ function TaskDetailContent({ task }: { task: Task }) {
   const [notes, setNotes] = React.useState(task.notes || '');
   const [newSubtask, setNewSubtask] = React.useState('');
   const subtaskInputRef = React.useRef<HTMLInputElement>(null);
+  const now = useNow();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -267,6 +272,39 @@ function TaskDetailContent({ task }: { task: Task }) {
                 >
                   Clear
                 </button>
+              )}
+            </div>
+
+            {/* A deferral is separate from the deadline, and must be visible
+                and reversible from here — otherwise a task pushed out of Focus
+                looks like it simply vanished. */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Later:</span>
+              {isDeferred(task, now) ? (
+                <>
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs font-medium text-foreground">
+                    <Moon className="size-3" />
+                    {formatDeferLabel(task.deferUntil as string, now)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deferTask(task.id, null)}
+                    className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
+                  >
+                    Do it now
+                  </button>
+                </>
+              ) : (
+                DEFER_PRESETS.filter((p) => p.available(now)).map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => deferTask(task.id, preset.at(now).toISOString())}
+                    className="focus-ring rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+                  >
+                    {preset.label}
+                  </button>
+                ))
               )}
             </div>
 

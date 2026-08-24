@@ -4,7 +4,8 @@ import React from 'react';
 import { Task } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { useNow, isOverdue } from '@/hooks/use-now';
-import { Calendar, AlertCircle, FileText } from 'lucide-react';
+import { isDeferred, formatDeferLabel } from '@/lib/defer';
+import { Calendar, AlertCircle, FileText, Moon } from 'lucide-react';
 
 /**
  * The deadline / steps / notes strip under a task title.
@@ -22,16 +23,24 @@ export function TaskMeta({
   accentDot?: string;
   variant?: 'chips' | 'line';
 }) {
-  const overdue = isOverdue(task.parsedDate, useNow());
+  const now = useNow();
+  const overdue = isOverdue(task.parsedDate, now);
+  const deferred = isDeferred(task, now);
   const subtasks = task.subtasks || [];
   const doneSubs = subtasks.filter((s) => s.completed).length;
 
-  const hasAny = Boolean(task.parsedDate) || subtasks.length > 0 || Boolean(task.notes);
+  const hasAny =
+    Boolean(task.parsedDate) || subtasks.length > 0 || Boolean(task.notes) || deferred;
 
   if (variant === 'line') {
     if (!hasAny) return null;
 
     const parts: React.ReactNode[] = [];
+    if (deferred) {
+      parts.push(
+        <span key="defer">Later · {formatDeferLabel(task.deferUntil as string, now)}</span>
+      );
+    }
     if (task.parsedDate) {
       parts.push(
         <span key="date" className={overdue ? 'font-medium text-q-do-first' : undefined}>
@@ -65,6 +74,16 @@ export function TaskMeta({
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[10px] text-muted-foreground">
       {accentDot && <span className={`size-1 rounded-full ${accentDot} opacity-70`} aria-hidden />}
+
+      {deferred && (
+        <span
+          className="inline-flex items-center gap-0.5 rounded bg-muted px-1 py-px font-medium text-muted-foreground"
+          title="Hidden from Focus until this time"
+        >
+          <Moon className="size-2.5" />
+          {formatDeferLabel(task.deferUntil as string, now)}
+        </span>
+      )}
 
       {task.parsedDate && (
         <span
