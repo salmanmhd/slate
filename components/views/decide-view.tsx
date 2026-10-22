@@ -427,7 +427,8 @@ function QuadrantPanel({
 /* ──────── Task card ──────── */
 
 function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
-  const { openTaskDetailModal, toggleTaskCompletion, setTaskCategory } = useMatrixStore();
+  const { openTaskDetailModal, toggleTaskCompletion, setTaskCategory, activeCategory } =
+    useMatrixStore();
   const [blockedHint, setBlockedHint] = React.useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -493,12 +494,14 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
           {task.content}
         </p>
 
-        <span className="mt-0.5 flex shrink-0">
-          <CategoryMark
-            category={task.category}
-            onCycle={(next) => setTaskCategory(task.id, next)}
-          />
-        </span>
+        {activeCategory === 'all' && (
+          <span className="mt-0.5 flex shrink-0">
+            <CategoryMark
+              category={task.category}
+              onCycle={(next) => setTaskCategory(task.id, next)}
+            />
+          </span>
+        )}
 
         <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
       </div>
