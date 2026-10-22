@@ -52,7 +52,7 @@ export const QUADRANTS: Record<Exclude<TaskStatus, 'inbox'>, QuadrantMeta> = {
 };
 
 export const INBOX_META = {
-  title: 'Inbox',
+  title: 'Unorganised Tasks',
   hint: 'Not yet decided',
   Icon: Inbox,
 };

@@ -105,22 +105,30 @@ export function CaptureView() {
   return (
     <div className="mx-auto w-full max-w-2xl pt-[12vh] pb-20">
       {/* Mode Switcher */}
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-0.5 rounded-xl border border-border/50 bg-muted/30 p-1">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        {mode === 'bulk' ? (
+          <span className="text-[11px] text-muted-foreground/60 hidden sm:inline">
+            Separate tasks with newlines or semicolons (;)
+          </span>
+        ) : (
+          <div aria-hidden />
+        )}
+
+        <div className="flex items-center gap-0.5 rounded-lg border border-border/40 bg-muted/25 p-0.5">
           <button
             type="button"
             onClick={() => {
               setMode('single');
               setTimeout(() => inputRef.current?.focus(), 0);
             }}
-            className={`focus-ring flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+            className={`focus-ring flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
               mode === 'single'
-                ? 'border border-border/60 bg-card text-foreground shadow-xs'
+                ? 'border border-border/60 bg-card text-foreground shadow-xs font-semibold'
                 : 'border border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            <PenLine className="size-3.5" />
-            <span>Single Task</span>
+            <PenLine className="size-3" />
+            <span>Single</span>
           </button>
           <button
             type="button"
@@ -131,22 +139,16 @@ export function CaptureView() {
               }
               setTimeout(() => bulkInputRef.current?.focus(), 0);
             }}
-            className={`focus-ring flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+            className={`focus-ring flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
               mode === 'bulk'
-                ? 'border border-border/60 bg-card text-foreground shadow-xs'
+                ? 'border border-border/60 bg-card text-foreground shadow-xs font-semibold'
                 : 'border border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Layers className="size-3.5" />
+            <Layers className="size-3" />
             <span>Bulk Add</span>
           </button>
         </div>
-
-        {mode === 'bulk' && (
-          <span className="text-[11px] text-muted-foreground/60 hidden sm:inline">
-            Separate tasks with newlines or semicolons (;)
-          </span>
-        )}
       </div>
 
       {mode === 'single' ? (
@@ -360,7 +362,7 @@ export function CaptureView() {
                 <div className="min-w-0 flex-1">
                   <button
                     onClick={() => openTaskDetailModal(task.id)}
-                    className="focus-ring block w-full truncate rounded-md text-left text-[0.9375rem] leading-snug text-foreground transition-colors group-hover:text-foreground/70"
+                    className="focus-ring block w-full break-words rounded-md text-left text-[0.9375rem] leading-snug text-foreground transition-colors group-hover:text-foreground/70"
                     title="Open details"
                   >
                     {task.content}

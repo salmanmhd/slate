@@ -124,7 +124,7 @@ export function DecideView() {
           <CategorySwitcher />
 
           <div className="flex items-center gap-3">
-            {/* Full page / Hide inbox toggle */}
+            {/* Full page / Hide unorganised toggle */}
             <button
               type="button"
               onClick={() => setHideInbox((prev) => !prev)}
@@ -133,11 +133,11 @@ export function DecideView() {
                   ? 'border-border/80 bg-foreground text-background shadow-xs font-semibold'
                   : 'border-border/50 bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground'
               }`}
-              title={hideInbox ? 'Show Inbox panel' : 'Hide Inbox (Full matrix view)'}
-              aria-label={hideInbox ? 'Show Inbox panel' : 'Hide Inbox (Full matrix view)'}
+              title={hideInbox ? 'Show Unorganised Tasks' : 'Hide Unorganised Tasks (Full Page)'}
+              aria-label={hideInbox ? 'Show Unorganised Tasks' : 'Hide Unorganised Tasks (Full Page)'}
             >
               <INBOX_META.Icon className="size-3.5" />
-              <span>{hideInbox ? 'Show Inbox' : 'Full Page'}</span>
+              <span>{hideInbox ? 'Show Unorganised' : 'Full Page'}</span>
               {hideInbox && inboxTasks.length > 0 && (
                 <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-bold">
                   {inboxTasks.length}
@@ -334,7 +334,7 @@ function InboxList({ tasks }: { tasks: Task[] }) {
       {tasks.length === 0 && (
         <div className="flex h-full min-h-20 items-center justify-center gap-2">
           <Check className="size-3.5 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground/60">Inbox clear</p>
+          <p className="text-xs text-muted-foreground/60">No unorganised tasks</p>
         </div>
       )}
     </div>
@@ -369,7 +369,7 @@ function QuadrantPanel({
   return (
     <div
       ref={setNodeRef}
-      className={`card-depth flex min-h-0 flex-1 flex-col rounded-2xl border p-2.5 transition-all duration-200 ${
+      className={`card-depth group/quadrant flex min-h-0 flex-1 flex-col rounded-2xl border p-2.5 transition-all duration-200 ${
         isOver
           ? 'scale-[1.015] border-foreground/40 bg-muted/30 opacity-100 ring-0'
           : `scale-100 ${resting}`
@@ -396,7 +396,7 @@ function QuadrantPanel({
               e.stopPropagation();
               onToggleEnlarge(status);
             }}
-            className="focus-ring ml-auto rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+            className="focus-ring ml-auto rounded-md p-1 text-muted-foreground/50 opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground"
             title={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
             aria-label={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
           >
@@ -485,7 +485,7 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
         </button>
 
         <p
-          className={`flex-1 truncate text-xs leading-snug font-medium select-none ${
+          className={`flex-1 break-words text-xs leading-snug font-medium select-none ${
             isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
           }`}
           title={task.content}
@@ -522,7 +522,7 @@ function DragPreview({ task }: { task: Task }) {
     <div className="flex max-w-sm rotate-1 flex-col gap-1 rounded-xl border border-foreground/40 bg-card p-3 shadow-2xl">
       <div className="flex items-center gap-2">
         <Circle className="size-3.5 shrink-0 text-muted-foreground/50" />
-        <span className="truncate text-xs font-semibold text-foreground">{task.content}</span>
+        <span className="break-words text-xs font-semibold text-foreground">{task.content}</span>
       </div>
       {task.parsedDate && (
         <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
