@@ -27,7 +27,7 @@ import { QUADRANTS, INBOX_META } from '@/components/quadrants';
 import { CategorySwitcher, CategoryMark } from '@/components/category-switcher';
 import { TaskMeta } from '@/components/task-meta';
 import { useNow, isOverdue } from '@/hooks/use-now';
-import { Calendar, Check, Circle, ChevronRight, Target } from 'lucide-react';
+import { Calendar, Check, Circle, ChevronRight, Target, Maximize2, Minimize2, LayoutGrid } from 'lucide-react';
 
 type Quadrant = Exclude<TaskStatus, 'inbox'>;
 const QUADRANT_IDS: TaskStatus[] = ['inbox', 'do_first', 'schedule', 'delegate', 'eliminate'];
@@ -37,6 +37,8 @@ export function DecideView() {
     useMatrixStore();
 
   const [activeTask, setActiveTask] = React.useState<Task | null>(null);
+  const [hideInbox, setHideInbox] = React.useState(false);
+  const [enlargedQuadrant, setEnlargedQuadrant] = React.useState<Quadrant | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -117,71 +119,172 @@ export function DecideView() {
       onDragEnd={handleDragEnd}
     >
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 lg:h-[calc(100vh-6.25rem)]">
-        {/* Context on the left, sorting progress on the right */}
+        {/* Context on the left, sorting progress and view mode on the right */}
         <div className="flex min-h-7 shrink-0 items-center justify-between gap-4 border-b border-border/60 px-1 pb-1.5">
           <CategorySwitcher />
 
-          {totalOpen > 0 &&
-            (inboxTasks.length === 0 ? (
-              <button
-                onClick={() => setActiveView('focus')}
-                className="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted/60"
-              >
-                <Target className="size-3.5" />
-                Start focusing
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="h-1 w-24 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-foreground/70 transition-all duration-500"
-                    style={{ width: `${Math.round((sortedCount / totalOpen) * 100)}%` }}
-                  />
-                </div>
-                <span className="text-[11px] tabular-nums text-muted-foreground/70">
-                  {sortedCount}/{totalOpen}
+          <div className="flex items-center gap-3">
+            {/* Full page / Hide inbox toggle */}
+            <button
+              type="button"
+              onClick={() => setHideInbox((prev) => !prev)}
+              className={`focus-ring inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                hideInbox
+                  ? 'border-border/80 bg-foreground text-background shadow-xs font-semibold'
+                  : 'border-border/50 bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground'
+              }`}
+              title={hideInbox ? 'Show Inbox panel' : 'Hide Inbox (Full matrix view)'}
+              aria-label={hideInbox ? 'Show Inbox panel' : 'Hide Inbox (Full matrix view)'}
+            >
+              <INBOX_META.Icon className="size-3.5" />
+              <span>{hideInbox ? 'Show Inbox' : 'Full Page'}</span>
+              {hideInbox && inboxTasks.length > 0 && (
+                <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-bold">
+                  {inboxTasks.length}
                 </span>
-              </div>
-            ))}
+              )}
+            </button>
+
+            {totalOpen > 0 &&
+              (inboxTasks.length === 0 ? (
+                <button
+                  onClick={() => setActiveView('focus')}
+                  className="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted/60"
+                >
+                  <Target className="size-3.5" />
+                  Start focusing
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="h-1 w-24 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-foreground/70 transition-all duration-500"
+                      style={{ width: `${Math.round((sortedCount / totalOpen) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                    {sortedCount}/{totalOpen}
+                  </span>
+                </div>
+              ))}
+          </div>
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
           {/* Inbox — a pile you drag from */}
-          <section className="card-depth flex min-h-104 flex-col rounded-2xl border border-border/80 bg-card p-3 lg:col-span-4 lg:min-h-0">
-            <div className="mb-2.5 flex shrink-0 items-center justify-between">
-              <div className="flex items-center gap-2">
-                <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
-                <h3 className="text-xs font-semibold text-foreground">{INBOX_META.title}</h3>
-              </div>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                {inboxTasks.length}
-              </span>
-            </div>
-
-            <InboxList tasks={inboxTasks} />
-          </section>
-
-          {/* The matrix, with its axes stated once */}
-          <section className="flex min-h-120 flex-col lg:col-span-8 lg:min-h-0">
-            <div className="grid min-h-0 flex-1 grid-cols-[1.25rem_1fr] grid-rows-[1.25rem_1fr] gap-x-1.5 gap-y-1">
-              <div aria-hidden />
-              <div className="grid grid-cols-2 gap-3">
-                <AxisLabel>Urgent</AxisLabel>
-                <AxisLabel>Not urgent</AxisLabel>
+          {!hideInbox && (
+            <section className="card-depth flex min-h-104 flex-col rounded-2xl border border-border/80 bg-card p-3 lg:col-span-4 lg:min-h-0 animate-fade">
+              <div className="mb-2.5 flex shrink-0 items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
+                  <h3 className="text-xs font-semibold text-foreground">{INBOX_META.title}</h3>
+                </div>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                  {inboxTasks.length}
+                </span>
               </div>
 
-              <div className="grid min-h-0 grid-rows-2 gap-3">
-                <AxisLabel vertical>Important</AxisLabel>
-                <AxisLabel vertical>Not important</AxisLabel>
-              </div>
+              <InboxList tasks={inboxTasks} />
+            </section>
+          )}
 
-              <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-3">
-                <QuadrantPanel status="do_first" tasks={byStatus.do_first} />
-                <QuadrantPanel status="schedule" tasks={byStatus.schedule} />
-                <QuadrantPanel status="delegate" tasks={byStatus.delegate} />
-                <QuadrantPanel status="eliminate" tasks={byStatus.eliminate} />
+          {/* The matrix, with its axes stated once, or enlarged single quadrant */}
+          <section
+            className={`flex min-h-120 flex-col ${
+              hideInbox ? 'lg:col-span-12' : 'lg:col-span-8'
+            } lg:min-h-0 transition-all duration-300`}
+          >
+            {enlargedQuadrant ? (
+              <div className="flex min-h-0 flex-1 flex-col animate-fade">
+                {/* Switcher bar while a quadrant is enlarged */}
+                <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2">
+                  <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-muted/30 p-1">
+                    {QUADRANT_IDS.filter((id): id is Quadrant => id !== 'inbox').map((qId) => {
+                      const qMeta = QUADRANTS[qId];
+                      const isCurrent = enlargedQuadrant === qId;
+                      const count = byStatus[qId].length;
+                      return (
+                        <button
+                          key={qId}
+                          type="button"
+                          onClick={() => setEnlargedQuadrant(qId)}
+                          className={`focus-ring flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                            isCurrent
+                              ? 'border border-border/60 bg-card text-foreground shadow-xs font-semibold'
+                              : 'border border-transparent text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <qMeta.Icon className={`size-3.5 ${qMeta.text}`} />
+                          <span>{qMeta.title}</span>
+                          <span className="text-[10px] tabular-nums text-muted-foreground">
+                            ({count})
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setEnlargedQuadrant(null)}
+                    className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
+                    title="Restore 2x2 grid"
+                  >
+                    <LayoutGrid className="size-3.5 text-muted-foreground" />
+                    <span className="hidden sm:inline">Restore 2x2 Grid</span>
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 flex flex-col">
+                  <QuadrantPanel
+                    status={enlargedQuadrant}
+                    tasks={byStatus[enlargedQuadrant]}
+                    isEnlarged={true}
+                    onToggleEnlarge={() => setEnlargedQuadrant(null)}
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid min-h-0 flex-1 grid-cols-[1.25rem_1fr] grid-rows-[1.25rem_1fr] gap-x-1.5 gap-y-1">
+                <div aria-hidden />
+                <div className="grid grid-cols-2 gap-3">
+                  <AxisLabel>Urgent</AxisLabel>
+                  <AxisLabel>Not urgent</AxisLabel>
+                </div>
+
+                <div className="grid min-h-0 grid-rows-2 gap-3">
+                  <AxisLabel vertical>Important</AxisLabel>
+                  <AxisLabel vertical>Not important</AxisLabel>
+                </div>
+
+                <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-3">
+                  <QuadrantPanel
+                    status="do_first"
+                    tasks={byStatus.do_first}
+                    isEnlarged={false}
+                    onToggleEnlarge={(q) => setEnlargedQuadrant(q)}
+                  />
+                  <QuadrantPanel
+                    status="schedule"
+                    tasks={byStatus.schedule}
+                    isEnlarged={false}
+                    onToggleEnlarge={(q) => setEnlargedQuadrant(q)}
+                  />
+                  <QuadrantPanel
+                    status="delegate"
+                    tasks={byStatus.delegate}
+                    isEnlarged={false}
+                    onToggleEnlarge={(q) => setEnlargedQuadrant(q)}
+                  />
+                  <QuadrantPanel
+                    status="eliminate"
+                    tasks={byStatus.eliminate}
+                    isEnlarged={false}
+                    onToggleEnlarge={(q) => setEnlargedQuadrant(q)}
+                  />
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </div>
@@ -238,9 +341,17 @@ function InboxList({ tasks }: { tasks: Task[] }) {
   );
 }
 
-/* ──────── Quadrant panel ──────── */
-
-function QuadrantPanel({ status, tasks }: { status: Quadrant; tasks: Task[] }) {
+function QuadrantPanel({
+  status,
+  tasks,
+  isEnlarged = false,
+  onToggleEnlarge,
+}: {
+  status: Quadrant;
+  tasks: Task[];
+  isEnlarged?: boolean;
+  onToggleEnlarge?: (status: Quadrant) => void;
+}) {
   const meta = QUADRANTS[status];
   const { setNodeRef, isOver } = useDroppable({
     id: status,
@@ -258,11 +369,11 @@ function QuadrantPanel({ status, tasks }: { status: Quadrant; tasks: Task[] }) {
   return (
     <div
       ref={setNodeRef}
-      className={`card-depth flex min-h-0 flex-col rounded-2xl border p-2.5 transition-all duration-200 ${
+      className={`card-depth flex min-h-0 flex-1 flex-col rounded-2xl border p-2.5 transition-all duration-200 ${
         isOver
           ? 'scale-[1.015] border-foreground/40 bg-muted/30 opacity-100 ring-0'
           : `scale-100 ${resting}`
-      }`}
+      } ${isEnlarged ? 'h-full' : ''}`}
     >
       <div className="mb-1.5 flex shrink-0 items-center gap-1.5 border-b border-border/50 pb-1.5">
         <meta.Icon className={`size-3.5 ${meta.text}`} />
@@ -274,9 +385,24 @@ function QuadrantPanel({ status, tasks }: { status: Quadrant; tasks: Task[] }) {
         >
           {meta.title}
         </h3>
-        <span className="ml-auto text-[10px] font-medium tabular-nums text-muted-foreground">
+        <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
           {tasks.length}
         </span>
+
+        {onToggleEnlarge && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleEnlarge(status);
+            }}
+            className="focus-ring ml-auto rounded-md p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+            title={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
+            aria-label={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
+          >
+            {isEnlarged ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
@@ -285,6 +411,14 @@ function QuadrantPanel({ status, tasks }: { status: Quadrant; tasks: Task[] }) {
             <TaskCard key={task.id} task={task} accentDot={meta.dot} />
           ))}
         </SortableContext>
+
+        {tasks.length === 0 && (
+          <div className="flex h-full min-h-24 items-center justify-center p-4 text-center">
+            <p className="text-xs text-muted-foreground/45">
+              Drop tasks here to {meta.title.toLowerCase()}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
