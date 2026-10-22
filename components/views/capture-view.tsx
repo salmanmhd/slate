@@ -2,16 +2,19 @@
 
 import React from 'react';
 import { useMatrixStore } from '@/lib/store';
-import { parseTaskInput } from '@/lib/nlp-parser';
-import { CATEGORY_BY_ID } from '@/lib/categories';
+import { parseTaskInput, formatFriendlyDate } from '@/lib/nlp-parser';
+import { extractBulkTasks } from '@/lib/bulk-parser';
+import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
 import { CategoryMark } from '@/components/category-switcher';
 import { TaskMeta } from '@/components/task-meta';
-import { Calendar, X, ArrowRight, CornerDownLeft } from 'lucide-react';
+import { TaskCategory } from '@/types/matrix';
+import { Calendar, X, ArrowRight, CornerDownLeft, PenLine, Layers, Check } from 'lucide-react';
 
 export function CaptureView() {
   const {
     tasks,
     addTask,
+    addBulkTasks,
     requestDeleteTask,
     setActiveView,
     openTaskDetailModal,
@@ -20,71 +23,317 @@ export function CaptureView() {
     setCaptureDraft,
   } = useMatrixStore();
 
+  const [mode, setMode] = React.useState<'single' | 'bulk'>('single');
+  const [bulkText, setBulkText] = React.useState('');
+  const [bulkCategory, setBulkCategory] = React.useState<TaskCategory | undefined>(undefined);
+  const [taskCustomCategories, setTaskCustomCategories] = React.useState<
+    Record<number, TaskCategory | undefined>
+  >({});
+
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const bulkInputRef = React.useRef<HTMLTextAreaElement>(null);
 
   const inboxTasks = tasks.filter((t) => t.status === 'inbox' && t.completionState !== 'completed');
 
   // Arriving here always means you are about to type — including when a
   // keystroke elsewhere in the app redirected you.
   React.useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (mode === 'single') {
+      inputRef.current?.focus();
+    } else {
+      bulkInputRef.current?.focus();
+    }
+  }, [mode]);
 
   const nlpPreview = React.useMemo(() => {
     if (!captureDraft.trim()) return null;
     return parseTaskInput(captureDraft);
   }, [captureDraft]);
 
+  const bulkTasks = React.useMemo(() => extractBulkTasks(bulkText), [bulkText]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!captureDraft.trim()) return;
 
-    // A freshly mounted row animates itself in — no extra state needed.
     addTask(captureDraft.trim(), 'inbox');
     setCaptureDraft('');
     inputRef.current?.focus();
   };
 
-  return (
-    <div className="mx-auto w-full max-w-2xl pt-[14vh] pb-20">
-      <form onSubmit={handleSubmit}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={captureDraft}
-          onChange={(e) => setCaptureDraft(e.target.value)}
-          placeholder="What's on your mind?"
-          aria-label="Capture a task"
-          className="w-full border-b border-border/50 bg-transparent pb-3 text-2xl leading-relaxed font-light tracking-tight text-foreground transition-colors placeholder:text-muted-foreground/30 focus:border-foreground/40 focus:outline-none sm:text-3xl"
-          autoComplete="off"
-        />
+  const handleBulkSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (bulkTasks.length === 0) return;
 
-        <div className="mt-3 flex min-h-6 items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            {nlpPreview?.formattedPreview && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
-                <Calendar className="size-3 text-foreground/70" />
-                {nlpPreview.formattedPreview}
-              </span>
-            )}
-            {nlpPreview?.category && (
-              <span className="rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
-                {CATEGORY_BY_ID[nlpPreview.category].label}
-              </span>
+    const items = bulkTasks.map((rawInput, idx) => ({
+      rawInput,
+      category:
+        taskCustomCategories[idx] !== undefined ? taskCustomCategories[idx] : bulkCategory,
+      customStatus: 'inbox' as const,
+    }));
+
+    addBulkTasks(items);
+    setBulkText('');
+    setTaskCustomCategories({});
+    bulkInputRef.current?.focus();
+  };
+
+  const handleBulkKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleBulkSubmit();
+    }
+  };
+
+  const removeTaskFromBulk = (indexToRemove: number) => {
+    const updated = bulkTasks.filter((_, idx) => idx !== indexToRemove);
+    setBulkText(updated.map((t) => `${t};`).join('\n'));
+    setTaskCustomCategories((prev) => {
+      const next: Record<number, TaskCategory | undefined> = {};
+      let nextIdx = 0;
+      for (let i = 0; i < bulkTasks.length; i++) {
+        if (i === indexToRemove) continue;
+        if (prev[i] !== undefined) {
+          next[nextIdx] = prev[i];
+        }
+        nextIdx++;
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-2xl pt-[12vh] pb-20">
+      {/* Mode Switcher */}
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-0.5 rounded-xl border border-border/50 bg-muted/30 p-1">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('single');
+              setTimeout(() => inputRef.current?.focus(), 0);
+            }}
+            className={`focus-ring flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+              mode === 'single'
+                ? 'border border-border/60 bg-card text-foreground shadow-xs'
+                : 'border border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <PenLine className="size-3.5" />
+            <span>Single Task</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('bulk');
+              if (captureDraft.trim() && !bulkText) {
+                setBulkText(captureDraft.trim());
+              }
+              setTimeout(() => bulkInputRef.current?.focus(), 0);
+            }}
+            className={`focus-ring flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+              mode === 'bulk'
+                ? 'border border-border/60 bg-card text-foreground shadow-xs'
+                : 'border border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Layers className="size-3.5" />
+            <span>Bulk Add</span>
+          </button>
+        </div>
+
+        {mode === 'bulk' && (
+          <span className="text-[11px] text-muted-foreground/60 hidden sm:inline">
+            Separate tasks with newlines or semicolons (;)
+          </span>
+        )}
+      </div>
+
+      {mode === 'single' ? (
+        <form onSubmit={handleSubmit}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={captureDraft}
+            onChange={(e) => setCaptureDraft(e.target.value)}
+            placeholder="What's on your mind?"
+            aria-label="Capture a task"
+            className="w-full border-b border-border/50 bg-transparent pb-3 text-2xl leading-relaxed font-light tracking-tight text-foreground transition-colors placeholder:text-muted-foreground/30 focus:border-foreground/40 focus:outline-none sm:text-3xl"
+            autoComplete="off"
+          />
+
+          <div className="mt-3 flex min-h-6 items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5">
+              {nlpPreview?.formattedPreview && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+                  <Calendar className="size-3 text-foreground/70" />
+                  {nlpPreview.formattedPreview}
+                </span>
+              )}
+              {nlpPreview?.category && (
+                <span className="rounded-lg bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+                  {CATEGORY_BY_ID[nlpPreview.category].label}
+                </span>
+              )}
+              {captureDraft.includes(';') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkText(captureDraft);
+                    setMode('bulk');
+                  }}
+                  className="rounded-lg bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Multiple items? Switch to Bulk Add
+                </button>
+              )}
+            </div>
+
+            {captureDraft.trim() && (
+              <button
+                type="submit"
+                className="focus-ring shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                aria-label="Save"
+              >
+                <CornerDownLeft className="size-3.5" />
+              </button>
             )}
           </div>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          <div className="relative">
+            <textarea
+              ref={bulkInputRef}
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              onKeyDown={handleBulkKeyDown}
+              placeholder={`Paste or write multiple tasks...\n\nExample:\ncreate a new locaiton to test the user;\nif IP is changed, then we have to give the option to release;`}
+              rows={4}
+              aria-label="Bulk capture tasks"
+              className="w-full resize-none border-b border-border/50 bg-transparent pb-3 text-lg leading-relaxed font-light tracking-tight text-foreground transition-colors placeholder:text-muted-foreground/30 focus:border-foreground/40 focus:outline-none sm:text-xl"
+            />
+          </div>
 
-          {captureDraft.trim() && (
-            <button
-              type="submit"
-              className="focus-ring shrink-0 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-              aria-label="Save"
-            >
-              <CornerDownLeft className="size-3.5" />
-            </button>
+          {/* Controls: Category Selector and Action */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">Category:</span>
+              <div className="flex items-center gap-0.5 rounded-lg border border-border/40 bg-muted/30 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkCategory(undefined);
+                    setTaskCustomCategories({});
+                  }}
+                  className={`focus-ring rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                    bulkCategory === undefined
+                      ? 'border border-border/60 bg-card text-foreground shadow-xs font-semibold'
+                      : 'border border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Auto / None
+                </button>
+                {CATEGORIES.map((cat) => {
+                  const isSelected = bulkCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setBulkCategory(cat.id);
+                        setTaskCustomCategories({});
+                      }}
+                      className={`focus-ring rounded-md px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                        isSelected
+                          ? 'border border-border/60 bg-card text-foreground shadow-xs font-semibold'
+                          : 'border border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {bulkTasks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleBulkSubmit()}
+                  className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3.5 py-1.5 text-xs font-semibold text-background shadow-xs transition-opacity hover:opacity-90"
+                >
+                  <Check className="size-3.5" />
+                  <span>
+                    Add {bulkTasks.length} {bulkTasks.length === 1 ? 'Task' : 'Tasks'}
+                  </span>
+                  <span className="opacity-60 text-[10px] hidden sm:inline">↵</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Real-time Preview of Detected Tasks */}
+          {bulkTasks.length > 0 && (
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-3 mt-3 animate-fade">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/30 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {bulkTasks.length} {bulkTasks.length === 1 ? 'task' : 'tasks'} ready to add
+                </span>
+                <span className="text-[11px] text-muted-foreground/60 hidden sm:inline">
+                  Press ⌘+Enter or Ctrl+Enter to save
+                </span>
+              </div>
+              <ul className="divide-y divide-border/20 max-h-56 overflow-y-auto pr-1">
+                {bulkTasks.map((taskText, idx) => {
+                  const { cleanedContent, parsedDate, category } = parseTaskInput(taskText);
+                  const effectiveCategory =
+                    taskCustomCategories[idx] !== undefined
+                      ? taskCustomCategories[idx]
+                      : (bulkCategory ?? category ?? undefined);
+                  return (
+                    <li
+                      key={idx}
+                      className="flex items-center justify-between gap-3 py-2 text-xs group"
+                    >
+                      <div className="min-w-0 flex-1 flex items-center gap-2">
+                        <span className="size-1.5 rounded-full bg-foreground/40 shrink-0" />
+                        <span className="truncate text-foreground font-normal">
+                          {cleanedContent || taskText}
+                        </span>
+                        {parsedDate && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground shrink-0 bg-muted/50 px-1.5 py-0.5 rounded">
+                            <Calendar className="size-2.5 text-foreground/70" />
+                            {formatFriendlyDate(parsedDate)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <CategoryMark
+                          category={effectiveCategory}
+                          alwaysVisible
+                          onCycle={(next) => {
+                            setTaskCustomCategories((prev) => ({ ...prev, [idx]: next }));
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeTaskFromBulk(idx)}
+                          className="text-muted-foreground/40 hover:text-destructive transition-colors p-0.5 rounded"
+                          title="Remove from list"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </div>
-      </form>
+      )}
 
       {inboxTasks.length > 0 && (
         <div className="mt-16">

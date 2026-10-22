@@ -74,7 +74,8 @@ interface MatrixState {
   closeTaskDetailModal: () => void;
 
   // Task CRUD
-  addTask: (rawInput: string, customStatus?: TaskStatus, initialSubtasks?: { content: string; priority: Priority }[], initialNotes?: string) => Task;
+  addTask: (rawInput: string, customStatus?: TaskStatus, initialSubtasks?: { content: string; priority: Priority }[], initialNotes?: string, explicitCategory?: TaskCategory) => Task;
+  addBulkTasks: (items: Array<{ rawInput: string; customStatus?: TaskStatus; category?: TaskCategory; initialNotes?: string }>) => Task[];
   updateTask: (id: string, updates: Partial<Task>) => void;
   editTaskContent: (id: string, newContent: string) => void;
   editTaskNotes: (id: string, notes: string) => void;
@@ -512,8 +513,8 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   openTaskDetailModal: (taskId) => setStore({ activeModalTaskId: taskId }),
   closeTaskDetailModal: () => setStore({ activeModalTaskId: null }),
 
-  addTask: (rawInput, customStatus, initialSubtasks, initialNotes) => {
-    // Category comes only from an explicit #tag. Capture never guesses.
+  addTask: (rawInput, customStatus, initialSubtasks, initialNotes, explicitCategory) => {
+    // Category comes only from an explicit #tag or explicitCategory.
     const { cleanedContent, parsedDate, category } = parseTaskInput(rawInput);
     const newTask: Task = {
       id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -521,7 +522,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       originalRawInput: rawInput,
       parsedDate: parsedDate ? parsedDate.toISOString() : null,
       status: customStatus || 'inbox',
-      category: category ?? undefined,
+      category: explicitCategory !== undefined ? explicitCategory : (category ?? undefined),
       completionState: 'pending',
       createdAt: new Date().toISOString(),
       notes: initialNotes || '',
@@ -538,6 +539,32 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     setStore({ tasks: nextTasks });
     persistData(nextTasks, getStore().logs);
     return newTask;
+  },
+
+  addBulkTasks: (items) => {
+    if (items.length === 0) return [];
+    const baseTime = Date.now();
+    const newTasks: Task[] = items.map((item, index) => {
+      const { cleanedContent, parsedDate, category: parsedCat } = parseTaskInput(item.rawInput);
+      const createdAt = new Date(baseTime + index).toISOString();
+      return {
+        id: `task-${baseTime + index}-${Math.random().toString(36).substring(2, 7)}`,
+        content: cleanedContent || item.rawInput.trim(),
+        originalRawInput: item.rawInput,
+        parsedDate: parsedDate ? parsedDate.toISOString() : null,
+        status: item.customStatus || 'inbox',
+        category: item.category !== undefined ? item.category : (parsedCat ?? undefined),
+        completionState: 'pending',
+        createdAt,
+        notes: item.initialNotes || '',
+        subtasks: [],
+      };
+    });
+
+    const nextTasks = [...newTasks, ...getStore().tasks];
+    setStore({ tasks: nextTasks });
+    persistData(nextTasks, getStore().logs);
+    return newTasks;
   },
 
   updateTask: (id, updates) => {
