@@ -9,6 +9,8 @@ export interface QuadrantMeta {
   /** Tailwind classes bound to the --q-* tokens in globals.css. */
   text: string;
   dot: string;
+  /** Top rule colour on the panel. */
+  bar: string;
   /**
    * Visual weight on the board. "Do First" is where your eye should land;
    * "Drop" is deliberately receded so it never competes for attention.
@@ -23,6 +25,7 @@ export const QUADRANTS: Record<Exclude<TaskStatus, 'inbox'>, QuadrantMeta> = {
     Icon: Flame,
     text: 'text-q-do-first',
     dot: 'bg-q-do-first',
+    bar: 'bg-q-do-first',
     weight: 'primary',
   },
   schedule: {
@@ -31,6 +34,7 @@ export const QUADRANTS: Record<Exclude<TaskStatus, 'inbox'>, QuadrantMeta> = {
     Icon: CalendarClock,
     text: 'text-q-schedule',
     dot: 'bg-q-schedule',
+    bar: 'bg-q-schedule',
     weight: 'normal',
   },
   delegate: {
@@ -39,6 +43,7 @@ export const QUADRANTS: Record<Exclude<TaskStatus, 'inbox'>, QuadrantMeta> = {
     Icon: UserCheck,
     text: 'text-q-delegate',
     dot: 'bg-q-delegate',
+    bar: 'bg-q-delegate',
     weight: 'normal',
   },
   eliminate: {
@@ -47,6 +52,7 @@ export const QUADRANTS: Record<Exclude<TaskStatus, 'inbox'>, QuadrantMeta> = {
     Icon: Trash2,
     text: 'text-q-eliminate',
     dot: 'bg-q-eliminate',
+    bar: 'bg-q-eliminate',
     weight: 'muted',
   },
 };

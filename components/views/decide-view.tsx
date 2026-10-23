@@ -120,7 +120,7 @@ export function DecideView() {
     >
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 lg:h-[calc(100vh-6.25rem)]">
         {/* Context on the left, sorting progress and view mode on the right */}
-        <div className="flex min-h-7 shrink-0 items-center justify-between gap-4 border-b border-border/60 px-1 pb-1.5">
+        <div className="flex min-h-8 shrink-0 items-center justify-between gap-4 border-b border-border px-1 pb-2">
           <CategorySwitcher />
 
           <div className="flex items-center gap-3">
@@ -128,10 +128,10 @@ export function DecideView() {
             <button
               type="button"
               onClick={() => setHideInbox((prev) => !prev)}
-              className={`focus-ring inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+              className={`focus-ring inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-[13px] font-medium transition-colors ${
                 hideInbox
-                  ? 'border-border/80 bg-foreground text-background shadow-xs font-semibold'
-                  : 'border-border/50 bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground'
+                  ? 'border-foreground bg-foreground text-background font-semibold'
+                  : 'border-border bg-card text-foreground/80 hover:bg-muted hover:text-foreground'
               }`}
               title={hideInbox ? 'Show Unorganised Tasks' : 'Hide Unorganised Tasks (Full Page)'}
               aria-label={hideInbox ? 'Show Unorganised Tasks' : 'Hide Unorganised Tasks (Full Page)'}
@@ -139,7 +139,7 @@ export function DecideView() {
               <INBOX_META.Icon className="size-3.5" />
               <span>{hideInbox ? 'Show Unorganised' : 'Full Page'}</span>
               {hideInbox && inboxTasks.length > 0 && (
-                <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-bold">
+                <span className="rounded-sm bg-background/20 px-1.5 text-[11px] font-bold">
                   {inboxTasks.length}
                 </span>
               )}
@@ -149,20 +149,20 @@ export function DecideView() {
               (inboxTasks.length === 0 ? (
                 <button
                   onClick={() => setActiveView('focus')}
-                  className="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted/60"
+                  className="focus-ring inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
                 >
                   <Target className="size-3.5" />
                   Start focusing
                 </button>
               ) : (
                 <div className="flex items-center gap-2">
-                  <div className="h-1 w-24 overflow-hidden rounded-full bg-muted">
+                  <div className="h-1.5 w-28 overflow-hidden rounded-sm bg-muted">
                     <div
-                      className="h-full rounded-full bg-foreground/70 transition-all duration-500"
+                      className="h-full rounded-sm bg-foreground transition-all duration-500"
                       style={{ width: `${Math.round((sortedCount / totalOpen) * 100)}%` }}
                     />
                   </div>
-                  <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {sortedCount}/{totalOpen}
                   </span>
                 </div>
@@ -173,13 +173,13 @@ export function DecideView() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
           {/* Inbox — a pile you drag from */}
           {!hideInbox && (
-            <section className="card-depth flex min-h-104 flex-col rounded-2xl border border-border/80 bg-card p-3 lg:col-span-4 lg:min-h-0 animate-fade">
-              <div className="mb-2.5 flex shrink-0 items-center justify-between">
+            <section className="card-depth flex min-h-104 flex-col rounded-lg border border-border bg-card p-3.5 lg:col-span-4 lg:min-h-0 animate-fade">
+              <div className="mb-3 flex shrink-0 items-center justify-between border-b border-border pb-2.5">
                 <div className="flex items-center gap-2">
-                  <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
-                  <h3 className="text-xs font-semibold text-foreground">{INBOX_META.title}</h3>
+                  <INBOX_META.Icon className="size-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold tracking-tight text-foreground">{INBOX_META.title}</h3>
                 </div>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                <span className="rounded-sm bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-foreground/80">
                   {inboxTasks.length}
                 </span>
               </div>
@@ -197,8 +197,8 @@ export function DecideView() {
             {enlargedQuadrant ? (
               <div className="flex min-h-0 flex-1 flex-col animate-fade">
                 {/* Switcher bar while a quadrant is enlarged */}
-                <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2">
-                  <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-muted/30 p-1">
+                <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+                  <div className="flex items-center gap-1 rounded-md border border-border bg-muted/50 p-1">
                     {QUADRANT_IDS.filter((id): id is Quadrant => id !== 'inbox').map((qId) => {
                       const qMeta = QUADRANTS[qId];
                       const isCurrent = enlargedQuadrant === qId;
@@ -208,15 +208,15 @@ export function DecideView() {
                           key={qId}
                           type="button"
                           onClick={() => setEnlargedQuadrant(qId)}
-                          className={`focus-ring flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                          className={`focus-ring flex items-center gap-1.5 rounded px-3 py-1 text-[13px] font-medium transition-colors ${
                             isCurrent
-                              ? 'border border-border/60 bg-card text-foreground shadow-xs font-semibold'
-                              : 'border border-transparent text-muted-foreground hover:text-foreground'
+                              ? 'border border-border bg-card text-foreground font-semibold'
+                              : 'border border-transparent text-foreground/70 hover:text-foreground'
                           }`}
                         >
                           <qMeta.Icon className={`size-3.5 ${qMeta.text}`} />
                           <span>{qMeta.title}</span>
-                          <span className="text-[10px] tabular-nums text-muted-foreground">
+                          <span className="text-xs tabular-nums text-muted-foreground">
                             ({count})
                           </span>
                         </button>
@@ -227,7 +227,7 @@ export function DecideView() {
                   <button
                     type="button"
                     onClick={() => setEnlargedQuadrant(null)}
-                    className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
+                    className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1 text-[13px] font-medium text-foreground transition-colors hover:bg-muted"
                     title="Restore 2x2 grid"
                   >
                     <LayoutGrid className="size-3.5 text-muted-foreground" />
@@ -245,7 +245,7 @@ export function DecideView() {
                 </div>
               </div>
             ) : (
-              <div className="grid min-h-0 flex-1 grid-cols-[1.25rem_1fr] grid-rows-[1.25rem_1fr] gap-x-1.5 gap-y-1">
+              <div className="grid min-h-0 flex-1 grid-cols-[1.5rem_1fr] grid-rows-[1.5rem_1fr] gap-x-2 gap-y-1.5">
                 <div aria-hidden />
                 <div className="grid grid-cols-2 gap-3">
                   <AxisLabel>Urgent</AxisLabel>
@@ -301,7 +301,7 @@ export function DecideView() {
 function AxisLabel({ children, vertical }: { children: React.ReactNode; vertical?: boolean }) {
   return (
     <div
-      className={`flex items-center justify-center text-[9px] font-semibold tracking-[0.14em] text-muted-foreground/60 uppercase ${
+      className={`flex items-center justify-center text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase ${
         vertical ? '[writing-mode:vertical-rl] rotate-180' : ''
       }`}
     >
@@ -321,8 +321,8 @@ function InboxList({ tasks }: { tasks: Task[] }) {
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-xl border p-2 transition-colors ${
-        isOver ? 'border-foreground/30 bg-muted/40' : 'border-border/50 bg-background/40'
+      className={`min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md border p-2 transition-colors ${
+        isOver ? 'border-foreground/40 bg-muted/60' : 'border-border bg-muted/30'
       }`}
     >
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
@@ -333,8 +333,8 @@ function InboxList({ tasks }: { tasks: Task[] }) {
 
       {tasks.length === 0 && (
         <div className="flex h-full min-h-20 items-center justify-center gap-2">
-          <Check className="size-3.5 text-muted-foreground/40" />
-          <p className="text-xs text-muted-foreground/60">No unorganised tasks</p>
+          <Check className="size-4 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No unorganised tasks</p>
         </div>
       )}
     </div>
@@ -361,31 +361,30 @@ function QuadrantPanel({
   // Weight, not words, tells you where your attention belongs.
   const resting =
     meta.weight === 'primary'
-      ? 'border-q-do-first/35 bg-card ring-1 ring-q-do-first/15'
+      ? 'border-q-do-first/50 bg-card'
       : meta.weight === 'muted'
-        ? 'border-border/50 bg-card/40 opacity-55 hover:opacity-100'
-        : 'border-border/80 bg-card';
+        ? 'border-border bg-muted/30'
+        : 'border-border bg-card';
 
   return (
     <div
       ref={setNodeRef}
-      className={`card-depth group/quadrant flex min-h-0 flex-1 flex-col rounded-2xl border p-2.5 transition-all duration-200 ${
+      className={`card-depth group/quadrant relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border p-3 transition-colors duration-200 ${
         isOver
-          ? 'scale-[1.015] border-foreground/40 bg-muted/30 opacity-100 ring-0'
-          : `scale-100 ${resting}`
+          ? 'border-foreground/50 bg-muted/60'
+          : resting
       } ${isEnlarged ? 'h-full' : ''}`}
     >
-      <div className="mb-1.5 flex shrink-0 items-center gap-1.5 border-b border-border/50 pb-1.5">
-        <meta.Icon className={`size-3.5 ${meta.text}`} />
+      <span aria-hidden className={`absolute inset-x-0 top-0 h-0.5 ${meta.bar}`} />
+      <div className="mb-2 flex shrink-0 items-center gap-2 border-b border-border pb-2">
+        <meta.Icon className={`size-4 ${meta.text}`} />
         <h3
-          className={`text-xs tracking-tight ${
-            meta.weight === 'primary' ? 'font-bold text-foreground' : 'font-semibold text-foreground/80'
-          }`}
+          className="text-sm font-semibold tracking-tight text-foreground"
           title={meta.hint}
         >
           {meta.title}
         </h3>
-        <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
+        <span className="rounded-sm bg-muted px-1.5 text-xs font-semibold tabular-nums text-foreground/70">
           {tasks.length}
         </span>
 
@@ -396,16 +395,16 @@ function QuadrantPanel({
               e.stopPropagation();
               onToggleEnlarge(status);
             }}
-            className="focus-ring ml-auto rounded-md p-1 text-muted-foreground/50 opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground"
+            className="focus-ring ml-auto rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground"
             title={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
             aria-label={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
           >
-            {isEnlarged ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            {isEnlarged ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </button>
         )}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
             <TaskCard key={task.id} task={task} accentDot={meta.dot} />
@@ -414,7 +413,7 @@ function QuadrantPanel({
 
         {tasks.length === 0 && (
           <div className="flex h-full min-h-24 items-center justify-center p-4 text-center">
-            <p className="text-xs text-muted-foreground/45">
+            <p className="text-[13px] text-muted-foreground">
               Drop tasks here to {meta.title.toLowerCase()}
             </p>
           </div>
@@ -463,8 +462,8 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
       {...attributes}
       {...listeners}
       onClick={() => openTaskDetailModal(task.id)}
-      className={`group relative flex cursor-grab flex-col gap-1 rounded-xl border bg-card px-2.5 py-2 shadow-xs transition-all hover:-translate-y-px hover:border-foreground/30 hover:shadow-sm active:cursor-grabbing ${
-        isCompleted ? 'border-border/40 opacity-60' : overdue ? 'border-q-do-first/40' : 'border-border/80'
+      className={`group relative flex cursor-grab flex-col gap-1.5 rounded-md border bg-card px-3 py-2.5 transition-colors hover:border-foreground/40 hover:bg-muted/40 active:cursor-grabbing ${
+        isCompleted ? 'border-border opacity-60' : overdue ? 'border-q-do-first/50' : 'border-border'
       }`}
     >
       <div className="flex items-start gap-2">
@@ -472,21 +471,21 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={handleToggle}
-          className="focus-ring mt-0.5 shrink-0 rounded-full text-muted-foreground/40 transition-colors hover:text-foreground"
+          className="focus-ring mt-px shrink-0 rounded-full text-muted-foreground transition-colors hover:text-foreground"
           title={hasOpenSteps ? 'Finish the steps first' : 'Mark done'}
           aria-label={hasOpenSteps ? 'Finish the steps first' : 'Mark done'}
         >
           {isCompleted ? (
-            <span className="flex size-3.5 items-center justify-center rounded-full bg-foreground text-background">
+            <span className="flex size-4 items-center justify-center rounded-full bg-foreground text-background">
               <Check className="size-2" strokeWidth={3} />
             </span>
           ) : (
-            <Circle className="size-3.5" strokeWidth={1.5} />
+            <Circle className="size-4" strokeWidth={1.5} />
           )}
         </button>
 
         <p
-          className={`flex-1 break-words text-xs leading-snug font-medium select-none ${
+          className={`flex-1 break-words text-[13px] leading-snug font-medium select-none ${
             isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
           }`}
           title={task.content}
@@ -503,11 +502,11 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
           </span>
         )}
 
-        <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
+        <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground" />
       </div>
 
       {blockedHint ? (
-        <p className="pt-0.5 text-[10px] font-medium text-q-do-first">
+        <p className="pt-0.5 text-[11px] font-medium text-q-do-first">
           Finish its {subtasks.length - doneSubs} open{' '}
           {subtasks.length - doneSubs === 1 ? 'step' : 'steps'} first
         </p>
@@ -522,10 +521,10 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
 
 function DragPreview({ task }: { task: Task }) {
   return (
-    <div className="flex max-w-sm rotate-1 flex-col gap-1 rounded-xl border border-foreground/40 bg-card p-3 shadow-2xl">
+    <div className="flex max-w-sm rotate-1 flex-col gap-1 rounded-md border border-foreground/50 bg-card p-3 shadow-xl">
       <div className="flex items-center gap-2">
         <Circle className="size-3.5 shrink-0 text-muted-foreground/50" />
-        <span className="break-words text-xs font-semibold text-foreground">{task.content}</span>
+        <span className="break-words text-[13px] font-semibold text-foreground">{task.content}</span>
       </div>
       {task.parsedDate && (
         <span className="flex items-center gap-1 text-[10px] text-muted-foreground">

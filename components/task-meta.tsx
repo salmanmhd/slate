@@ -72,7 +72,7 @@ export function TaskMeta({
   if (!hasAny && !accentDot) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[10px] text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px] text-muted-foreground">
       {accentDot && <span className={`size-1 rounded-full ${accentDot} opacity-70`} aria-hidden />}
 
       {deferred && (
