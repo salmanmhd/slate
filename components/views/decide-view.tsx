@@ -121,7 +121,10 @@ export function DecideView() {
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-3 lg:h-[calc(100vh-6.25rem)]">
         {/* Context on the left, sorting progress and view mode on the right */}
         <div className="flex min-h-7 shrink-0 items-center justify-between gap-4 border-b border-border/60 px-1 pb-1.5">
-          <CategorySwitcher />
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <CategorySwitcher />
+            <QuickAdd />
+          </div>
 
           <div className="flex items-center gap-3">
             {/* Full page / Hide unorganised toggle */}
@@ -297,6 +300,33 @@ export function DecideView() {
 }
 
 /* ──────── Axis labels ──────── */
+
+/** Add straight into Unorganised without a trip to Capture. Same parser as Capture, so dates like "fri 3pm" still work. */
+function QuickAdd() {
+  const { addTask, activeCategory } = useMatrixStore();
+  const [value, setValue] = React.useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!value.trim()) return;
+    addTask(value.trim(), 'inbox', undefined, undefined, activeCategory === 'all' ? undefined : activeCategory);
+    setValue('');
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex min-w-0 max-w-sm flex-1 items-center">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="+ Add a task…"
+        aria-label="Add a task"
+        autoComplete="off"
+        className="w-full rounded-lg border border-border/50 bg-card/60 px-2.5 py-1 text-xs text-foreground transition-colors placeholder:text-muted-foreground/60 focus:border-foreground/30 focus:bg-card focus:outline-none"
+      />
+    </form>
+  );
+}
 
 function AxisLabel({ children, vertical }: { children: React.ReactNode; vertical?: boolean }) {
   return (

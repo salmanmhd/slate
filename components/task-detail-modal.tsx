@@ -312,6 +312,23 @@ function TaskDetailContent({ task }: { task: Task }) {
 
           {/* Details + notes */}
           <div className="flex min-h-0 flex-col gap-4 border-t border-border/50 px-6 py-4 md:overflow-y-auto md:border-t-0">
+            {/* Notes */}
+            <div className="flex min-h-40 flex-1 flex-col">
+              <p className="mb-1.5 text-xs text-muted-foreground">Notes</p>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => editTaskNotes(task.id, notes)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    e.currentTarget.blur();
+                  }
+                }}
+                placeholder="Context, links, what done looks like…"
+                className="w-full flex-1 resize-none rounded-xl border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
+              />
+            </div>
             <div>
               <p className="mb-1.5 text-xs text-muted-foreground">Category</p>
               <div className="flex flex-wrap items-center gap-1">
@@ -422,23 +439,6 @@ function TaskDetailContent({ task }: { task: Task }) {
               </div>
             )}
 
-            {/* Notes */}
-            <div className="flex min-h-40 flex-1 flex-col">
-              <p className="mb-1.5 text-xs text-muted-foreground">Notes</p>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={() => editTaskNotes(task.id, notes)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.stopPropagation();
-                    e.currentTarget.blur();
-                  }
-                }}
-                placeholder="Context, links, what done looks like…"
-                className="w-full flex-1 resize-none rounded-xl border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
-              />
-            </div>
           </div>
         </div>
 
@@ -560,20 +560,20 @@ function SubtaskRow({
   }
 
   return (
+    // The whole row is the drag handle; the sensor's 4px threshold keeps clicks
+    // on the buttons inside working as clicks.
     <div
       ref={setNodeRef}
       style={style}
-      className="group flex items-center gap-2 rounded-xl border border-border/50 bg-background px-2.5 py-2.5 text-sm transition-colors hover:border-foreground/30"
+      {...attributes}
+      {...listeners}
+      aria-label={`Step: ${sub.content}. Drag to reorder`}
+      className="focus-ring group flex cursor-grab touch-none items-center gap-2 rounded-xl border border-border/50 bg-background px-2.5 py-2.5 text-sm transition-colors hover:border-foreground/30 active:cursor-grabbing"
     >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-40 hover:opacity-80! active:cursor-grabbing"
-        title="Drag to reorder"
-        aria-label="Reorder step"
-      >
-        <GripVertical className="size-3.5" />
-      </button>
+      <GripVertical
+        aria-hidden="true"
+        className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-40"
+      />
 
       <button
         onClick={onToggle}

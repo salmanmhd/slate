@@ -22,6 +22,7 @@ export function Header() {
     setActiveView,
     tasks,
     appendCaptureDraft,
+    stuckNextStep,
     activeModalTaskId,
     accountabilityModalTask,
   } = useMatrixStore();
@@ -48,7 +49,7 @@ export function Header() {
       }
 
       // A modal owns the keyboard while it is open.
-      if (activeModalTaskId || accountabilityModalTask) return;
+      if (activeModalTaskId || accountabilityModalTask || stuckNextStep) return;
       // The timer page owns Space; don't let it also type into Capture.
       if (activeView === 'timer' && (e.code === 'Space' || e.key === ' ')) return;
 
@@ -72,7 +73,7 @@ export function Header() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeView, activeModalTaskId, accountabilityModalTask, setActiveView, appendCaptureDraft]);
+  }, [activeView, activeModalTaskId, accountabilityModalTask, stuckNextStep, setActiveView, appendCaptureDraft]);
 
   // The inbox is never filtered, so this counts everything unsorted.
   const inboxCount = tasks.filter(

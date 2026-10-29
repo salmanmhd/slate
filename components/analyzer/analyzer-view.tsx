@@ -6,6 +6,7 @@ import { ExcusesLedger } from './excuses-ledger';
 import { ContributionGrid } from './contribution-grid';
 import { FocusAnalysis } from './focus-analysis';
 import { SessionHistory } from './session-history';
+import { LaggingReport } from './lagging-report';
 import { QUADRANTS } from '@/components/quadrants';
 import { TaskStatus } from '@/types/matrix';
 import { LineChart } from 'lucide-react';
@@ -60,6 +61,8 @@ export function AnalyzerView() {
 
   return (
     <div className="mx-auto w-full max-w-300 space-y-5 pb-16">
+      <LaggingReport tasks={tasks} logs={logs} sessions={sessions} />
+
       <ContributionGrid sessions={sessions} tasks={tasks} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -129,11 +132,11 @@ export function AnalyzerView() {
         </div>
       </div>
 
+      <ExcusesLedger logs={logs} />
+
       {sessions.length > 0 && <FocusAnalysis sessions={sessions} />}
 
       <SessionHistory sessions={sessions} />
-
-      <ExcusesLedger logs={logs} />
     </div>
   );
 }
