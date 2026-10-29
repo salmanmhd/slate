@@ -23,6 +23,7 @@ import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
 import { DEFER_PRESETS, isDeferred, formatDeferLabel } from '@/lib/defer';
 import { BLOCKER_CATEGORIES } from '@/lib/constants';
+import { NotesEditor } from '@/components/notes-editor';
 import { useNow } from '@/hooks/use-now';
 import {
   X,
@@ -313,22 +314,12 @@ function TaskDetailContent({ task }: { task: Task }) {
           {/* Details + notes */}
           <div className="flex min-h-0 flex-col gap-4 border-t border-border/50 px-6 py-4 md:overflow-y-auto md:border-t-0">
             {/* Notes */}
-            <div className="flex min-h-40 flex-1 flex-col">
-              <p className="mb-1.5 text-xs text-muted-foreground">Notes</p>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={() => editTaskNotes(task.id, notes)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    e.stopPropagation();
-                    e.currentTarget.blur();
-                  }
-                }}
-                placeholder="Context, links, what done looks like…"
-                className="w-full flex-1 resize-none rounded-xl border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
-              />
-            </div>
+            <NotesEditor
+              value={notes}
+              onChange={setNotes}
+              onCommit={() => editTaskNotes(task.id, notes)}
+              placeholder="Context, links, what done looks like… (Ctrl+B bold, Ctrl+H heading)"
+            />
             <div>
               <p className="mb-1.5 text-xs text-muted-foreground">Category</p>
               <div className="flex flex-wrap items-center gap-1">

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/cron/mail?kind=morning", "schedule": "30 2 * * *" },
+    { "path": "/api/cron/mail?kind=plan", "schedule": "30 9 * * *" },
+    { "path": "/api/cron/mail?kind=evening", "schedule": "30 15 * * *" },
+    { "path": "/api/cron/mail?kind=weekly", "schedule": "30 13 * * 0" }
+  ]
+}
