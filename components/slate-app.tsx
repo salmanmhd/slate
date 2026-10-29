@@ -10,6 +10,7 @@ import { FocusView } from '@/components/views/focus-view';
 import { PomodoroView } from '@/components/views/pomodoro-view';
 import { AnalyzerView } from '@/components/analyzer/analyzer-view';
 import { AccountabilityDialog } from '@/components/accountability/accountability-dialog';
+import { StuckNextStep } from '@/components/accountability/stuck-next-step';
 import { TaskDetailModal } from '@/components/task-detail-modal';
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 
@@ -53,6 +54,7 @@ export function SlateApp() {
         </div>
       </main>
       <AccountabilityDialog />
+      <StuckNextStep />
       <TaskDetailModal />
       <ConfirmDeleteDialog />
     </div>

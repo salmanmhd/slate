@@ -22,6 +22,7 @@ import { Priority, SubTask, Task, TaskCategory } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
 import { DEFER_PRESETS, isDeferred, formatDeferLabel } from '@/lib/defer';
+import { BLOCKER_CATEGORIES } from '@/lib/constants';
 import { useNow } from '@/hooks/use-now';
 import {
   X,
@@ -64,6 +65,7 @@ export function TaskDetailModal() {
 
 function TaskDetailContent({ task }: { task: Task }) {
   const {
+    logs,
     closeTaskDetailModal,
     editTaskContent,
     editTaskNotes,
@@ -81,7 +83,6 @@ function TaskDetailContent({ task }: { task: Task }) {
   const [title, setTitle] = React.useState(task.content);
   const [isEditingTitle, setIsEditingTitle] = React.useState(false);
   const [showDatePicker, setShowDatePicker] = React.useState(false);
-  const [showNotes, setShowNotes] = React.useState(Boolean(task.notes));
   const [notes, setNotes] = React.useState(task.notes || '');
   const [newSubtask, setNewSubtask] = React.useState('');
   const subtaskInputRef = React.useRef<HTMLInputElement>(null);
@@ -120,6 +121,11 @@ function TaskDetailContent({ task }: { task: Task }) {
 
   const subtasks = task.subtasks || [];
   const doneCount = subtasks.filter((s) => s.completed).length;
+  const stuckLogs = logs.filter((l) => l.taskId === task.id);
+  const lastStuck = stuckLogs.reduce(
+    (latest, l) => (l.loggedAt > latest.loggedAt ? l : latest),
+    stuckLogs[0]
+  );
 
   const handleSaveTitle = () => {
     if (title.trim() && title.trim() !== task.content) {
@@ -158,7 +164,7 @@ function TaskDetailContent({ task }: { task: Task }) {
         role="dialog"
         aria-modal="true"
         aria-label="Task details"
-        className="glass animate-rise relative flex h-[min(88vh,42rem)] w-full max-w-2xl flex-col rounded-2xl"
+        className="glass animate-rise relative flex h-[min(90vh,44rem)] w-full max-w-4xl flex-col rounded-2xl"
       >
         {/* Title */}
         <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
@@ -222,168 +228,204 @@ function TaskDetailContent({ task }: { task: Task }) {
           </button>
         </div>
 
-        {/* Scrolling body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-6">
-          {/* Category */}
-          <div className="flex items-center gap-1 border-b border-border/50 pb-4">
-            {([undefined, ...CATEGORIES.map((c) => c.id)] as (TaskCategory | undefined)[]).map(
-              (id) => {
-                const isCurrent = task.category === id;
-                return (
-                  <button
-                    key={id ?? 'none'}
-                    onClick={() => setTaskCategory(task.id, id)}
-                    aria-pressed={isCurrent}
-                    className={`focus-ring rounded-lg px-2.5 py-1 text-xs transition-colors ${
-                      isCurrent
-                        ? 'bg-muted font-semibold text-foreground'
-                        : 'text-muted-foreground/60 hover:text-foreground'
-                    }`}
-                  >
-                    {id ? CATEGORY_BY_ID[id].label : 'No category'}
-                  </button>
-                );
-              }
-            )}
+        {/* Two columns: the work on the left, everything about it on the right.
+            Below md they stack and the whole body scrolls instead. */}
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/50 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:overflow-hidden">
+          {/* Steps */}
+          <div className="flex min-h-0 flex-col md:border-r md:border-border/50">
+            <div className="min-h-0 flex-1 px-6 py-4 md:overflow-y-auto">
+              <div className="flex items-center gap-3">
+                <span className="shrink-0 text-sm font-semibold text-foreground">Steps</span>
+                {subtasks.length > 0 && (
+                  <>
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-foreground/70 transition-all duration-500"
+                        style={{ width: `${Math.round((doneCount / subtasks.length) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {doneCount}/{subtasks.length}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {subtasks.length > 0 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCorners}
+                  onDragEnd={handleDragEndSubtask}
+                >
+                  <div className="mt-3 space-y-1.5">
+                    <SortableContext
+                      items={subtasks.map((s) => s.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {subtasks.map((sub) => (
+                        <SubtaskRow
+                          key={sub.id}
+                          sub={sub}
+                          onToggle={() => toggleSubtask(task.id, sub.id)}
+                          onDelete={() => deleteSubtask(task.id, sub.id)}
+                          onRename={(content) => editSubtask(task.id, sub.id, { content })}
+                          onTogglePriority={() =>
+                            editSubtask(task.id, sub.id, {
+                              priority: (sub.priority === 'high' ? 'normal' : 'high') as Priority,
+                            })
+                          }
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Break it into steps small enough to start without thinking.
+                </p>
+              )}
+            </div>
+
+            {/* Adding a step stays reachable no matter how long the list gets */}
+            <form
+              onSubmit={handleAddSubtask}
+              className="flex shrink-0 items-center gap-2 border-t border-border/50 px-6 py-3"
+            >
+              <input
+                ref={subtaskInputRef}
+                type="text"
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                placeholder="Add a step…"
+                className="flex-1 rounded-xl border border-border/60 bg-background px-3.5 py-2.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
+                autoComplete="off"
+              />
+              <button
+                type="submit"
+                disabled={!newSubtask.trim()}
+                className="focus-ring rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
+              >
+                Add
+              </button>
+            </form>
           </div>
 
-          {/* Deadline */}
-          <div className="border-b border-border/50 py-4">
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDatePicker(!showDatePicker)}
-                aria-expanded={showDatePicker}
-                className={`focus-ring flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                  task.parsedDate
-                    ? 'border-foreground/20 bg-muted/60 text-foreground'
-                    : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
-                }`}
-              >
-                <CalendarIcon className="size-4" />
-                {task.parsedDate ? formatFriendlyDate(task.parsedDate) : 'Deadline'}
-              </button>
+          {/* Details + notes */}
+          <div className="flex min-h-0 flex-col gap-4 border-t border-border/50 px-6 py-4 md:overflow-y-auto md:border-t-0">
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Category</p>
+              <div className="flex flex-wrap items-center gap-1">
+                {([undefined, ...CATEGORIES.map((c) => c.id)] as (TaskCategory | undefined)[]).map(
+                  (id) => {
+                    const isCurrent = task.category === id;
+                    return (
+                      <button
+                        key={id ?? 'none'}
+                        onClick={() => setTaskCategory(task.id, id)}
+                        aria-pressed={isCurrent}
+                        className={`focus-ring rounded-lg px-2.5 py-1 text-xs transition-colors ${
+                          isCurrent
+                            ? 'bg-muted font-semibold text-foreground'
+                            : 'text-muted-foreground/60 hover:text-foreground'
+                        }`}
+                      >
+                        {id ? CATEGORY_BY_ID[id].label : 'None'}
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+            </div>
 
-              {task.parsedDate && (
+            {/* Deadline */}
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Deadline</p>
+              <div className="flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  onClick={() => editTaskExactDate(task.id, null)}
-                  className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-destructive"
+                  onClick={() => setShowDatePicker(!showDatePicker)}
+                  aria-expanded={showDatePicker}
+                  className={`focus-ring flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                    task.parsedDate
+                      ? 'border-foreground/20 bg-muted/60 text-foreground'
+                      : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
+                  }`}
                 >
-                  Clear
+                  <CalendarIcon className="size-4" />
+                  {task.parsedDate ? formatFriendlyDate(task.parsedDate) : 'Set deadline'}
                 </button>
+
+                {task.parsedDate && (
+                  <button
+                    type="button"
+                    onClick={() => editTaskExactDate(task.id, null)}
+                    className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-destructive"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {showDatePicker && (
+                <div className="mt-3 w-full max-w-64 rounded-2xl border border-border/70 bg-background p-3.5">
+                  <CalendarPicker
+                    initialDate={task.parsedDate ? new Date(task.parsedDate) : new Date()}
+                    onSelectDate={(newDate) => {
+                      editTaskExactDate(task.id, newDate.toISOString());
+                      setShowDatePicker(false);
+                    }}
+                    onCancel={() => setShowDatePicker(false)}
+                  />
+                </div>
               )}
             </div>
 
             {/* A deferral is separate from the deadline, and must be visible
                 and reversible from here — otherwise a task pushed out of Focus
                 looks like it simply vanished. */}
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Later:</span>
-              {isDeferred(task, now) ? (
-                <>
-                  <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs font-medium text-foreground">
-                    <Moon className="size-3" />
-                    {formatDeferLabel(task.deferUntil as string, now)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => deferTask(task.id, null)}
-                    className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
-                  >
-                    Do it now
-                  </button>
-                </>
-              ) : (
-                DEFER_PRESETS.filter((p) => p.available(now)).map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => deferTask(task.id, preset.at(now).toISOString())}
-                    className="focus-ring rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
-                  >
-                    {preset.label}
-                  </button>
-                ))
-              )}
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">Not before</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {isDeferred(task, now) ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs font-medium text-foreground">
+                      <Moon className="size-3" />
+                      {formatDeferLabel(task.deferUntil as string, now)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deferTask(task.id, null)}
+                      className="focus-ring rounded-md text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
+                    >
+                      Do it now
+                    </button>
+                  </>
+                ) : (
+                  DEFER_PRESETS.filter((p) => p.available(now)).map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => deferTask(task.id, preset.at(now).toISOString())}
+                      className="focus-ring rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+                    >
+                      {preset.label}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
 
-            {showDatePicker && (
-              <div className="mt-3 w-full max-w-64 rounded-2xl border border-border/70 bg-background p-3.5">
-                <CalendarPicker
-                  initialDate={task.parsedDate ? new Date(task.parsedDate) : new Date()}
-                  onSelectDate={(newDate) => {
-                    editTaskExactDate(task.id, newDate.toISOString());
-                    setShowDatePicker(false);
-                  }}
-                  onCancel={() => setShowDatePicker(false)}
-                />
+            {stuckLogs.length > 0 && (
+              <div className="rounded-xl bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+                Stuck {stuckLogs.length}× · {BLOCKER_CATEGORIES[lastStuck.category].label.toLowerCase()} ·
+                last {format(new Date(lastStuck.loggedAt), 'd MMM')}
               </div>
             )}
-          </div>
 
-          {/* Steps */}
-          <div className="py-4">
-            <div className="flex items-center gap-3">
-              <span className="shrink-0 text-sm font-semibold text-foreground">Steps</span>
-              {subtasks.length > 0 && (
-                <>
-                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-foreground/70 transition-all duration-500"
-                      style={{ width: `${Math.round((doneCount / subtasks.length) * 100)}%` }}
-                    />
-                  </div>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    {doneCount}/{subtasks.length}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {subtasks.length > 0 && (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCorners}
-                onDragEnd={handleDragEndSubtask}
-              >
-                <div className="mt-3 space-y-1.5">
-                  <SortableContext
-                    items={subtasks.map((s) => s.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {subtasks.map((sub) => (
-                      <SubtaskRow
-                        key={sub.id}
-                        sub={sub}
-                        onToggle={() => toggleSubtask(task.id, sub.id)}
-                        onDelete={() => deleteSubtask(task.id, sub.id)}
-                        onTogglePriority={() =>
-                          editSubtask(task.id, sub.id, {
-                            priority: (sub.priority === 'high' ? 'normal' : 'high') as Priority,
-                          })
-                        }
-                      />
-                    ))}
-                  </SortableContext>
-                </div>
-              </DndContext>
-            )}
-          </div>
-
-          {/* Notes */}
-          <div className="border-t border-border/50 py-4">
-            <button
-              type="button"
-              onClick={() => setShowNotes(!showNotes)}
-              className="focus-ring rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {showNotes ? 'Hide notes' : task.notes ? 'Notes' : 'Add notes'}
-            </button>
-
-            {showNotes && (
+            {/* Notes */}
+            <div className="flex min-h-40 flex-1 flex-col">
+              <p className="mb-1.5 text-xs text-muted-foreground">Notes</p>
               <textarea
-                rows={4}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 onBlur={() => editTaskNotes(task.id, notes)}
@@ -393,35 +435,12 @@ function TaskDetailContent({ task }: { task: Task }) {
                     e.currentTarget.blur();
                   }
                 }}
-                placeholder="Notes"
-                className="mt-2 w-full resize-none rounded-xl border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
+                placeholder="Context, links, what done looks like…"
+                className="w-full flex-1 resize-none rounded-xl border border-border/60 bg-background p-3 text-sm leading-relaxed text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
               />
-            )}
+            </div>
           </div>
         </div>
-
-        {/* Adding a step stays reachable no matter how long the list gets */}
-        <form
-          onSubmit={handleAddSubtask}
-          className="flex shrink-0 items-center gap-2 border-t border-border/50 px-6 py-3"
-        >
-          <input
-            ref={subtaskInputRef}
-            type="text"
-            value={newSubtask}
-            onChange={(e) => setNewSubtask(e.target.value)}
-            placeholder="Add a step…"
-            className="flex-1 rounded-xl border border-border/60 bg-background px-3.5 py-2.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
-            autoComplete="off"
-          />
-          <button
-            type="submit"
-            disabled={!newSubtask.trim()}
-            className="focus-ring rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
-          >
-            Add
-          </button>
-        </form>
 
         {/* Footer */}
         <div className="flex shrink-0 items-center justify-between border-t border-border/50 px-6 py-3">
@@ -451,17 +470,21 @@ function SubtaskRow({
   sub,
   onToggle,
   onDelete,
+  onRename,
   onTogglePriority,
 }: {
   sub: SubTask;
   onToggle: () => void;
   onDelete: () => void;
+  onRename: (content: string) => void;
   onTogglePriority: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: sub.id,
     data: { type: 'subtask', sub },
   });
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(sub.content);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -470,6 +493,71 @@ function SubtaskRow({
   };
 
   const isHigh = sub.priority === 'high';
+
+  const startEditing = () => {
+    setDraft(sub.content);
+    setIsEditing(true);
+  };
+
+  const save = () => {
+    const next = draft.trim();
+    if (next && next !== sub.content) onRename(next);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="flex items-center gap-2 rounded-xl border border-foreground/40 bg-background px-2.5 py-1.5 text-sm"
+      >
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              save();
+            }
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setIsEditing(false);
+            }
+          }}
+          aria-label="Edit step"
+          className="min-w-0 flex-1 rounded-lg bg-muted/50 px-2 py-1.5 text-sm text-foreground focus:outline-none"
+        />
+        <button
+          type="button"
+          // mousedown so the save lands before the input's blur does
+          onMouseDown={(e) => {
+            e.preventDefault();
+            save();
+          }}
+          className="focus-ring rounded p-1 text-foreground"
+          title="Save step"
+          aria-label="Save step"
+        >
+          <Check className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onDelete();
+          }}
+          className="focus-ring rounded p-1 text-muted-foreground hover:text-destructive"
+          title="Delete step"
+          aria-label="Delete step"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -503,6 +591,7 @@ function SubtaskRow({
       </button>
 
       <span
+        onDoubleClick={startEditing}
         className={`flex-1 truncate ${
           sub.completed ? 'text-muted-foreground/50 line-through' : 'font-medium text-foreground'
         }`}
@@ -522,6 +611,16 @@ function SubtaskRow({
         aria-label="Toggle high priority"
       >
         <Flame className="size-3.5" fill={isHigh ? 'currentColor' : 'none'} />
+      </button>
+
+      <button
+        type="button"
+        onClick={startEditing}
+        className="focus-ring rounded p-1 text-muted-foreground/50 transition-colors hover:text-foreground"
+        title="Edit step"
+        aria-label="Edit step"
+      >
+        <Pencil className="size-3.5" />
       </button>
 
       <button

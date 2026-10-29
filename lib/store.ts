@@ -44,6 +44,9 @@ interface MatrixState {
   captureDraft: string;
   accountabilityModalTask: Task | null;
   accountabilityModalResolutionDefault?: 'rescheduled' | 'eliminated' | 'marked_failed';
+  /** Set right after a stuck log, so the app can hand over one concrete next move. */
+  stuckNextStep: StuckNextStep | null;
+  closeStuckNextStep: () => void;
 
   /**
    * Session work timer. Held here rather than in FocusView so glancing at the
@@ -117,6 +120,14 @@ interface MatrixState {
   ) => void;
 
   clearAllData: () => Promise<void>;
+}
+
+export interface StuckNextStep {
+  taskId: string;
+  category: BlockerCategory;
+  resolution: 'rescheduled' | 'eliminated' | 'marked_failed';
+  /** How many times this task has now been logged as stuck, this one included. */
+  stuckCount: number;
 }
 
 export const TIMER_PRESETS_MIN = [10, 25, 50] as const;
@@ -248,6 +259,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   captureDraft: '',
   accountabilityModalTask: null,
   accountabilityModalResolutionDefault: 'rescheduled',
+  stuckNextStep: null,
 
   timer: INITIAL_TIMER,
   sessions: [],
@@ -802,6 +814,10 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     setStore({ accountabilityModalTask: null });
   },
 
+  closeStuckNextStep: () => {
+    setStore({ stuckNextStep: null });
+  },
+
   recordAccountability: (taskId, category, reason, resolution, newDueDate) => {
     const task = getStore().tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -844,7 +860,17 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       );
     }
     const nextLogs = [newLog, ...getStore().logs];
-    setStore({ tasks: updatedTasks, logs: nextLogs, accountabilityModalTask: null });
+    setStore({
+      tasks: updatedTasks,
+      logs: nextLogs,
+      accountabilityModalTask: null,
+      stuckNextStep: {
+        taskId,
+        category,
+        resolution,
+        stuckCount: nextLogs.filter((l) => l.taskId === taskId).length,
+      },
+    });
     persistData(updatedTasks, nextLogs);
   },
 
@@ -871,6 +897,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       isHydrated: false,
       activeModalTaskId: null,
       accountabilityModalTask: null,
+      stuckNextStep: null,
       pendingDeleteTaskId: null,
       captureDraft: '',
     });
