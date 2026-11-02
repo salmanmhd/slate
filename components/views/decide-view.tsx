@@ -38,7 +38,9 @@ export function DecideView() {
     useMatrixStore();
 
   const [activeTask, setActiveTask] = React.useState<Task | null>(null);
-  const [hideInbox, setHideInbox] = React.useState(true);
+  // null = automatic: the inbox shows while something is unorganised, else it
+  // stays out of the way. Toggling it takes over until the page is reopened.
+  const [inboxOverride, setInboxOverride] = React.useState<boolean | null>(null);
   const [enlargedQuadrant, setEnlargedQuadrant] = React.useState<Quadrant | null>(null);
 
   const sensors = useSensors(
@@ -66,6 +68,8 @@ export function DecideView() {
       },
     };
   }, [tasks, activeCategory]);
+
+  const hideInbox = inboxOverride ?? inboxTasks.length === 0;
 
   const handleDragStart = (e: DragStartEvent) => {
     const t = tasks.find((item) => item.id === e.active.id);
@@ -131,7 +135,7 @@ export function DecideView() {
             {/* Full page / Hide unorganised toggle */}
             <button
               type="button"
-              onClick={() => setHideInbox((prev) => !prev)}
+              onClick={() => setInboxOverride(!hideInbox)}
               className={`focus-ring relative inline-flex items-center rounded-md p-1.5 transition-colors ${
                 hideInbox
                   ? 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
@@ -175,7 +179,7 @@ export function DecideView() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
           {/* Inbox — a pile you drag from */}
           {!hideInbox && (
-            <section className="card-depth flex min-h-104 flex-col rounded-2xl border border-border/80 bg-card p-3 lg:col-span-4 lg:min-h-0 animate-fade">
+            <section className="card-depth flex min-h-80 flex-col rounded-2xl border border-border/80 bg-card p-2.5 lg:col-span-3 lg:min-h-0 animate-fade">
               <div className="mb-2.5 flex shrink-0 items-center justify-between">
                 <div className="flex items-center gap-2">
                   <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
@@ -193,7 +197,7 @@ export function DecideView() {
           {/* The matrix, with its axes stated once, or enlarged single quadrant */}
           <section
             className={`flex min-h-120 flex-col ${
-              hideInbox ? 'lg:col-span-12' : 'lg:col-span-8'
+              hideInbox ? 'lg:col-span-12' : 'lg:col-span-9'
             } lg:min-h-0 transition-all duration-300`}
           >
             {enlargedQuadrant ? (
