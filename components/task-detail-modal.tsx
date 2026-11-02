@@ -86,7 +86,7 @@ function TaskDetailContent({ task }: { task: Task }) {
   const [showDatePicker, setShowDatePicker] = React.useState(false);
   const [notes, setNotes] = React.useState(task.notes || '');
   const [newSubtask, setNewSubtask] = React.useState('');
-  const subtaskInputRef = React.useRef<HTMLInputElement>(null);
+  const subtaskInputRef = React.useRef<HTMLTextAreaElement>(null);
   const now = useNow();
 
   const sensors = useSensors(
@@ -137,8 +137,14 @@ function TaskDetailContent({ task }: { task: Task }) {
 
   const handleAddSubtask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubtask.trim()) return;
-    addSubtask(task.id, newSubtask.trim(), 'normal');
+    // One step per line, so a pasted list becomes a list of steps. Leading
+    // bullets, numbers and checkboxes are stripped.
+    const lines = newSubtask
+      .split('\n')
+      .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])?\s*(?:\[[ xX]?\]\s*)?/, '').trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+    lines.forEach((line) => addSubtask(task.id, line, 'normal'));
     setNewSubtask('');
   };
 
@@ -290,24 +296,37 @@ function TaskDetailContent({ task }: { task: Task }) {
             {/* Adding a step stays reachable no matter how long the list gets */}
             <form
               onSubmit={handleAddSubtask}
-              className="flex shrink-0 items-center gap-2 border-t border-border/50 px-6 py-3"
+              className="shrink-0 border-t border-border/50 px-6 py-3"
             >
-              <input
-                ref={subtaskInputRef}
-                type="text"
-                value={newSubtask}
-                onChange={(e) => setNewSubtask(e.target.value)}
-                placeholder="Add a step…"
-                className="flex-1 rounded-xl border border-border/60 bg-background px-3.5 py-2.5 text-sm text-foreground transition-colors placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
-                autoComplete="off"
-              />
-              <button
-                type="submit"
-                disabled={!newSubtask.trim()}
-                className="focus-ring rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
-              >
-                Add
-              </button>
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={subtaskInputRef}
+                  rows={2}
+                  value={newSubtask}
+                  onChange={(e) => setNewSubtask(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Enter adds; Shift+Enter keeps writing on a new line.
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                    }
+                  }}
+                  placeholder="Add a step…"
+                  aria-label="Add a step"
+                  className="max-h-40 min-h-[4.25rem] flex-1 resize-none rounded-xl border border-border/60 bg-background px-3.5 py-2.5 text-sm leading-relaxed text-foreground transition-colors [field-sizing:content] placeholder:text-muted-foreground/40 focus:border-foreground/30 focus:outline-none"
+                  autoComplete="off"
+                />
+                <button
+                  type="submit"
+                  disabled={!newSubtask.trim()}
+                  className="focus-ring rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-30"
+                >
+                  Add
+                </button>
+              </div>
+              <p className="mt-1.5 px-1 text-[11px] text-muted-foreground/60">
+                Enter to add · Shift+Enter for a new line · each line becomes its own step
+              </p>
             </form>
           </div>
 
