@@ -38,7 +38,7 @@ export function DecideView() {
     useMatrixStore();
 
   const [activeTask, setActiveTask] = React.useState<Task | null>(null);
-  const [hideInbox, setHideInbox] = React.useState(false);
+  const [hideInbox, setHideInbox] = React.useState(true);
   const [enlargedQuadrant, setEnlargedQuadrant] = React.useState<Quadrant | null>(null);
 
   const sensors = useSensors(
@@ -132,20 +132,18 @@ export function DecideView() {
             <button
               type="button"
               onClick={() => setHideInbox((prev) => !prev)}
-              className={`focus-ring inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+              className={`focus-ring relative inline-flex items-center rounded-md p-1.5 transition-colors ${
                 hideInbox
-                  ? 'border-border/80 bg-foreground text-background shadow-xs font-semibold'
-                  : 'border-border/50 bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground'
+                  ? 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  : 'bg-muted text-foreground'
               }`}
-              title={hideInbox ? 'Show Unorganised Tasks' : 'Hide Unorganised Tasks (Full Page)'}
-              aria-label={hideInbox ? 'Show Unorganised Tasks' : 'Hide Unorganised Tasks (Full Page)'}
+              title={hideInbox ? 'Show unorganised tasks' : 'Hide unorganised tasks'}
+              aria-label={hideInbox ? 'Show unorganised tasks' : 'Hide unorganised tasks'}
+              aria-pressed={!hideInbox}
             >
-              <INBOX_META.Icon className="size-3.5" />
-              <span>{hideInbox ? 'Show Unorganised' : 'Full Page'}</span>
+              <INBOX_META.Icon className="size-4" />
               {hideInbox && inboxTasks.length > 0 && (
-                <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-bold">
-                  {inboxTasks.length}
-                </span>
+                <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-foreground" />
               )}
             </button>
 
