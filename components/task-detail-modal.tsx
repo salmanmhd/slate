@@ -171,7 +171,7 @@ function TaskDetailContent({ task }: { task: Task }) {
         role="dialog"
         aria-modal="true"
         aria-label="Task details"
-        className="glass animate-rise relative flex h-[min(90vh,44rem)] w-full max-w-4xl flex-col rounded-2xl"
+        className="glass animate-rise relative flex h-[min(90vh,46rem)] w-full max-w-6xl flex-col rounded-2xl"
       >
         {/* Title */}
         <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
@@ -237,7 +237,7 @@ function TaskDetailContent({ task }: { task: Task }) {
 
         {/* Two columns: the work on the left, everything about it on the right.
             Below md they stack and the whole body scrolls instead. */}
-        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/50 md:grid md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/50 md:grid md:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] md:overflow-hidden">
           {/* Steps */}
           <div className="flex min-h-0 flex-col md:border-r md:border-border/50">
             <div className="min-h-0 flex-1 px-6 py-4 md:overflow-y-auto">
@@ -520,11 +520,13 @@ function SubtaskRow({
       <div
         ref={setNodeRef}
         style={style}
-        className="flex items-center gap-2 rounded-xl border border-foreground/40 bg-background px-2.5 py-1.5 text-sm"
+        className="flex items-start gap-2 rounded-xl border border-foreground/40 bg-background px-2.5 py-1.5 text-sm"
       >
-        <input
+        <textarea
           autoFocus
+          rows={1}
           value={draft}
+          onFocus={(e) => e.currentTarget.setSelectionRange(draft.length, draft.length)}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={save}
           onKeyDown={(e) => {
@@ -538,7 +540,7 @@ function SubtaskRow({
             }
           }}
           aria-label="Edit step"
-          className="min-w-0 flex-1 rounded-lg bg-muted/50 px-2 py-1.5 text-sm text-foreground focus:outline-none"
+          className="max-h-40 min-w-0 flex-1 resize-none rounded-lg bg-muted/50 px-2 py-1.5 text-sm leading-snug text-foreground [field-sizing:content] focus:outline-none"
         />
         <button
           type="button"
@@ -578,7 +580,7 @@ function SubtaskRow({
       {...attributes}
       {...listeners}
       aria-label={`Step: ${sub.content}. Drag to reorder`}
-      className="focus-ring group flex cursor-grab touch-none items-center gap-2 rounded-xl border border-border/50 bg-background px-2.5 py-2.5 text-sm transition-colors hover:border-foreground/30 active:cursor-grabbing"
+      className="focus-ring group flex cursor-grab touch-none items-start gap-2 rounded-xl border border-border/50 bg-background px-2.5 py-2.5 text-sm transition-colors hover:border-foreground/30 active:cursor-grabbing"
     >
       <GripVertical
         aria-hidden="true"
@@ -587,7 +589,7 @@ function SubtaskRow({
 
       <button
         onClick={onToggle}
-        className="focus-ring shrink-0 rounded-full text-muted-foreground/50 transition-colors hover:text-foreground"
+        className="focus-ring mt-0.5 shrink-0 rounded-full text-muted-foreground/50 transition-colors hover:text-foreground"
         title={sub.completed ? 'Mark as not done' : 'Mark done'}
         aria-label={sub.completed ? 'Mark as not done' : 'Mark done'}
       >
@@ -602,7 +604,7 @@ function SubtaskRow({
 
       <span
         onDoubleClick={startEditing}
-        className={`flex-1 truncate ${
+        className={`min-w-0 flex-1 py-0.5 leading-snug break-words whitespace-pre-wrap ${
           sub.completed ? 'text-muted-foreground/50 line-through' : 'font-medium text-foreground'
         }`}
       >
