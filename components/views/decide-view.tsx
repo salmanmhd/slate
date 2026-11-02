@@ -26,6 +26,7 @@ import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { QUADRANTS, INBOX_META } from '@/components/quadrants';
 import { CategorySwitcher, CategoryMark } from '@/components/category-switcher';
 import { TaskMeta } from '@/components/task-meta';
+import { CopyTaskButton } from '@/components/copy-task-button';
 import { useNow, isOverdue } from '@/hooks/use-now';
 import { Calendar, Check, Circle, ChevronRight, Target, Maximize2, Minimize2, LayoutGrid } from 'lucide-react';
 
@@ -532,6 +533,11 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
             />
           </span>
         )}
+
+        <CopyTaskButton
+          task={task}
+          className="mt-0.5 opacity-0 group-hover:opacity-100"
+        />
 
         <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
       </div>

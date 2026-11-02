@@ -9,6 +9,7 @@ import { DEFER_PRESETS, isDeferred, formatDeferLabel } from '@/lib/defer';
 import { useIdleReveal } from '@/hooks/use-idle-reveal';
 import { useSessionTimer } from '@/hooks/use-session-timer';
 import { FocusTimer } from '@/components/focus-timer';
+import { CopyTaskButton } from '@/components/copy-task-button';
 import confetti from 'canvas-confetti';
 import { CATEGORY_BY_ID } from '@/lib/categories';
 import { Check, Inbox, PenLine, Layers, CalendarClock, Pencil } from 'lucide-react';
@@ -274,6 +275,11 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
         <h1 className="font-heading flex-1 text-center text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground sm:text-[2.6rem]">
           {activeStep ? activeStep.content : task.content}
         </h1>
+
+        <CopyTaskButton
+          task={task}
+          className="mt-3 opacity-0 group-hover:opacity-100 sm:mt-4"
+        />
 
         <button
           onClick={complete}
