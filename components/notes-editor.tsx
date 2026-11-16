@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Bold, Heading } from 'lucide-react';
+import { InlineText } from '@/components/inline-text';
 
 /**
  * Plain-text notes with two bits of markdown: `**bold**` and `## heading`.
@@ -169,7 +170,7 @@ function Inline({ text }: { text: string }) {
             {part.slice(2, -2)}
           </strong>
         ) : (
-          <React.Fragment key={i}>{part}</React.Fragment>
+          <InlineText key={i} text={part} />
         )
       )}
     </>

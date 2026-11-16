@@ -7,6 +7,8 @@ import { extractBulkTasks } from '@/lib/bulk-parser';
 import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
 import { CategoryMark } from '@/components/category-switcher';
 import { TaskMeta } from '@/components/task-meta';
+import { InlineText } from '@/components/inline-text';
+import { useNow } from '@/hooks/use-now';
 import { TaskCategory } from '@/types/matrix';
 import { Calendar, X, ArrowRight, CornerDownLeft, PenLine, Layers, Check } from 'lucide-react';
 
@@ -23,6 +25,7 @@ export function CaptureView() {
     setCaptureDraft,
   } = useMatrixStore();
 
+  const now = useNow();
   const [mode, setMode] = React.useState<'single' | 'bulk'>('single');
   const [bulkText, setBulkText] = React.useState('');
   const [bulkCategory, setBulkCategory] = React.useState<TaskCategory | undefined>(undefined);
@@ -104,6 +107,17 @@ export function CaptureView() {
 
   return (
     <div className="mx-auto w-full max-w-2xl pt-[12vh] pb-20">
+      {/* Where in the week you are — present, but too faint to pull focus */}
+      <p className="mb-3 text-[11px] tracking-wide text-muted-foreground/40 tabular-nums select-none">
+        {new Date(now).toLocaleDateString(undefined, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'short',
+        })}
+        <span className="px-1.5">·</span>
+        {new Date(now).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+      </p>
+
       {/* Mode Switcher */}
       <div className="mb-5 flex items-center justify-between gap-3">
         {mode === 'bulk' ? (
@@ -365,7 +379,7 @@ export function CaptureView() {
                     className="focus-ring block w-full break-words rounded-md text-left text-[0.9375rem] leading-snug text-foreground transition-colors group-hover:text-foreground/70"
                     title="Open details"
                   >
-                    {task.content}
+                    <InlineText text={task.content} />
                   </button>
                   <TaskMeta task={task} variant="line" />
                 </div>

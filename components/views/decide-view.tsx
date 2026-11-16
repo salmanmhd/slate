@@ -27,6 +27,7 @@ import { QUADRANTS, INBOX_META } from '@/components/quadrants';
 import { CategorySwitcher, CategoryMark } from '@/components/category-switcher';
 import { TaskMeta } from '@/components/task-meta';
 import { CopyTaskButton } from '@/components/copy-task-button';
+import { InlineText } from '@/components/inline-text';
 import { useNow, isOverdue } from '@/hooks/use-now';
 import { Calendar, Check, Circle, ChevronRight, Target, Maximize2, Minimize2, LayoutGrid } from 'lucide-react';
 
@@ -38,9 +39,13 @@ export function DecideView() {
     useMatrixStore();
 
   const [activeTask, setActiveTask] = React.useState<Task | null>(null);
-  // null = automatic: the inbox shows while something is unorganised, else it
-  // stays out of the way. Toggling it takes over until the page is reopened.
-  const [inboxOverride, setInboxOverride] = React.useState<boolean | null>(null);
+  // Decided once, when the page opens: show the inbox only if something is in
+  // it. Sorting the last task never makes it vanish underneath you — it stays
+  // until the next visit, or until you toggle it yourself.
+  const [hideInbox, setHideInbox] = React.useState(
+    () => !tasks.some((t) => t.status === 'inbox' && t.completionState !== 'completed')
+  );
+  const [inboxWidth, setInboxWidth] = useInboxWidth();
   const [enlargedQuadrant, setEnlargedQuadrant] = React.useState<Quadrant | null>(null);
 
   const sensors = useSensors(
@@ -68,8 +73,6 @@ export function DecideView() {
       },
     };
   }, [tasks, activeCategory]);
-
-  const hideInbox = inboxOverride ?? inboxTasks.length === 0;
 
   const handleDragStart = (e: DragStartEvent) => {
     const t = tasks.find((item) => item.id === e.active.id);
@@ -135,7 +138,7 @@ export function DecideView() {
             {/* Full page / Hide unorganised toggle */}
             <button
               type="button"
-              onClick={() => setInboxOverride(!hideInbox)}
+              onClick={() => setHideInbox((prev) => !prev)}
               className={`focus-ring relative inline-flex items-center rounded-md p-1.5 transition-colors ${
                 hideInbox
                   ? 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
@@ -176,30 +179,33 @@ export function DecideView() {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-0"
+          style={{ '--inbox-w': `${inboxWidth}px` } as React.CSSProperties}
+        >
           {/* Inbox — a pile you drag from */}
           {!hideInbox && (
-            <section className="card-depth flex min-h-80 flex-col rounded-2xl border border-border/80 bg-card p-2.5 lg:col-span-3 lg:min-h-0 animate-fade">
-              <div className="mb-2.5 flex shrink-0 items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold text-foreground">{INBOX_META.title}</h3>
+            <>
+              <section className="card-depth flex min-h-80 shrink-0 flex-col rounded-2xl border border-border/80 bg-card p-2.5 lg:min-h-0 lg:w-[var(--inbox-w)] animate-fade">
+                <div className="mb-2.5 flex shrink-0 items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold text-foreground">{INBOX_META.title}</h3>
+                  </div>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                    {inboxTasks.length}
+                  </span>
                 </div>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                  {inboxTasks.length}
-                </span>
-              </div>
 
-              <InboxList tasks={inboxTasks} />
-            </section>
+                <InboxList tasks={inboxTasks} />
+              </section>
+
+              <InboxResizer width={inboxWidth} onChange={setInboxWidth} />
+            </>
           )}
 
           {/* The matrix, with its axes stated once, or enlarged single quadrant */}
-          <section
-            className={`flex min-h-120 flex-col ${
-              hideInbox ? 'lg:col-span-12' : 'lg:col-span-9'
-            } lg:min-h-0 transition-all duration-300`}
-          >
+          <section className="flex min-h-120 min-w-0 flex-col lg:min-h-0 lg:flex-1">
             {enlargedQuadrant ? (
               <div className="flex min-h-0 flex-1 flex-col animate-fade">
                 {/* Switcher bar while a quadrant is enlarged */}
@@ -299,6 +305,76 @@ export function DecideView() {
         {activeTask && <DragPreview task={activeTask} />}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+/* ──────── Resizable inbox ──────── */
+
+const INBOX_WIDTH_KEY = 'slate:inbox-width';
+const INBOX_WIDTH_DEFAULT = 300;
+const INBOX_WIDTH_MIN = 220;
+const INBOX_WIDTH_MAX = 560;
+
+const clampInboxWidth = (n: number) =>
+  Math.min(INBOX_WIDTH_MAX, Math.max(INBOX_WIDTH_MIN, Math.round(n)));
+
+/** The inbox width, kept in this browser only — a layout preference, not account data. */
+function useInboxWidth(): [number, (next: number) => void] {
+  const [width, setWidth] = React.useState(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(INBOX_WIDTH_KEY));
+      return saved ? clampInboxWidth(saved) : INBOX_WIDTH_DEFAULT;
+    } catch {
+      return INBOX_WIDTH_DEFAULT;
+    }
+  });
+
+  const update = React.useCallback((next: number) => {
+    const clamped = clampInboxWidth(next);
+    setWidth(clamped);
+    try {
+      window.localStorage.setItem(INBOX_WIDTH_KEY, String(clamped));
+    } catch {
+      /* private mode — the width just will not persist */
+    }
+  }, []);
+
+  return [width, update];
+}
+
+/** A thin drag handle between the inbox and the matrix. Desktop only. */
+function InboxResizer({ width, onChange }: { width: number; onChange: (next: number) => void }) {
+  const drag = React.useRef<{ x: number; width: number } | null>(null);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize unorganised panel"
+      aria-valuenow={width}
+      aria-valuemin={INBOX_WIDTH_MIN}
+      aria-valuemax={INBOX_WIDTH_MAX}
+      tabIndex={0}
+      title="Drag to resize · double-click to reset"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, width };
+      }}
+      onPointerMove={(e) => {
+        if (drag.current) onChange(drag.current.width + e.clientX - drag.current.x);
+      }}
+      onPointerUp={() => {
+        drag.current = null;
+      }}
+      onDoubleClick={() => onChange(INBOX_WIDTH_DEFAULT)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') onChange(width - 16);
+        if (e.key === 'ArrowRight') onChange(width + 16);
+      }}
+      className="group/resize focus-ring hidden w-4 shrink-0 cursor-col-resize touch-none items-center justify-center lg:flex"
+    >
+      <span className="h-10 w-0.5 rounded-full bg-border/0 transition-colors group-hover/resize:bg-foreground/30 group-focus-visible/resize:bg-foreground/30" />
+    </div>
   );
 }
 
@@ -441,7 +517,7 @@ function QuadrantPanel({
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} accentDot={meta.dot} />
+            <TaskCard key={task.id} task={task} accentDot={meta.dot} showSteps={isEnlarged} />
           ))}
         </SortableContext>
 
@@ -459,9 +535,22 @@ function QuadrantPanel({
 
 /* ──────── Task card ──────── */
 
-function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
-  const { openTaskDetailModal, toggleTaskCompletion, setTaskCategory, activeCategory } =
-    useMatrixStore();
+function TaskCard({
+  task,
+  accentDot,
+  showSteps = false,
+}: {
+  task: Task;
+  accentDot?: string;
+  showSteps?: boolean;
+}) {
+  const {
+    openTaskDetailModal,
+    toggleTaskCompletion,
+    toggleSubtask,
+    setTaskCategory,
+    activeCategory,
+  } = useMatrixStore();
   const [blockedHint, setBlockedHint] = React.useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -524,7 +613,7 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
           }`}
           title={task.content}
         >
-          {task.content}
+          <InlineText text={task.content} />
         </p>
 
         {activeCategory === 'all' && (
@@ -543,6 +632,42 @@ function TaskCard({ task, accentDot }: { task: Task; accentDot?: string }) {
 
         <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
       </div>
+
+      {/* Enlarged quadrants have the room, so the steps come out of hiding */}
+      {showSteps && subtasks.length > 0 && (
+        <ul className="space-y-0.5 pl-5.5">
+          {subtasks.map((sub) => (
+            <li key={sub.id} className="flex items-start gap-1.5">
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSubtask(task.id, sub.id);
+                }}
+                className="focus-ring mt-0.5 shrink-0 rounded-full text-muted-foreground/60 transition-colors hover:text-foreground"
+                title={sub.completed ? 'Mark as not done' : 'Mark done'}
+                aria-label={sub.completed ? 'Mark as not done' : 'Mark done'}
+              >
+                {sub.completed ? (
+                  <span className="flex size-3 items-center justify-center rounded-full bg-foreground text-background">
+                    <Check className="size-2" strokeWidth={3} />
+                  </span>
+                ) : (
+                  <Circle className="size-3" strokeWidth={1.5} />
+                )}
+              </button>
+              <span
+                className={`min-w-0 flex-1 break-words text-xs leading-snug select-none ${
+                  sub.completed ? 'text-muted-foreground/50 line-through' : 'text-foreground/80'
+                }`}
+              >
+                <InlineText text={sub.content} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {blockedHint ? (
         <p className="pt-0.5 text-[10px] font-medium text-q-do-first">

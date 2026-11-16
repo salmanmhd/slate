@@ -24,6 +24,7 @@ import { CATEGORIES, CATEGORY_BY_ID } from '@/lib/categories';
 import { DEFER_PRESETS, isDeferred, formatDeferLabel } from '@/lib/defer';
 import { BLOCKER_CATEGORIES } from '@/lib/constants';
 import { NotesEditor } from '@/components/notes-editor';
+import { InlineText } from '@/components/inline-text';
 import { useNow } from '@/hooks/use-now';
 import {
   X,
@@ -220,7 +221,7 @@ function TaskDetailContent({ task }: { task: Task }) {
               title="Click to edit"
             >
               <h2 className="font-heading text-xl leading-snug font-semibold text-foreground">
-                {task.content}
+                <InlineText text={task.content} />
               </h2>
               <Pencil className="mt-1.5 size-4 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
             </button>
@@ -608,7 +609,7 @@ function SubtaskRow({
           sub.completed ? 'text-muted-foreground/50 line-through' : 'font-medium text-foreground'
         }`}
       >
-        {sub.content}
+        <InlineText text={sub.content} />
       </span>
 
       <button

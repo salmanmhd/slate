@@ -10,6 +10,7 @@ import { useIdleReveal } from '@/hooks/use-idle-reveal';
 import { useSessionTimer } from '@/hooks/use-session-timer';
 import { FocusTimer } from '@/components/focus-timer';
 import { CopyTaskButton } from '@/components/copy-task-button';
+import { InlineText } from '@/components/inline-text';
 import confetti from 'canvas-confetti';
 import { CATEGORY_BY_ID } from '@/lib/categories';
 import { Check, Inbox, PenLine, Layers, CalendarClock, Pencil } from 'lucide-react';
@@ -233,7 +234,9 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
       {/* Which task this step belongs to, and when it is due */}
       <div className={`flex min-h-4 items-center justify-center gap-3 ${veil(revealed)}`}>
         {activeStep && (
-          <p className="min-w-0 truncate text-xs text-muted-foreground/60">{task.content}</p>
+          <p className="min-w-0 truncate text-xs text-muted-foreground/60">
+            <InlineText text={task.content} />
+          </p>
         )}
         {task.parsedDate && (
           <span
@@ -273,7 +276,7 @@ function FocusCard({ task, revealed }: { task: Task; revealed: boolean }) {
         </button>
 
         <h1 className="font-heading flex-1 text-center text-3xl leading-[1.15] font-semibold tracking-tight text-balance text-foreground sm:text-[2.6rem]">
-          {activeStep ? activeStep.content : task.content}
+          <InlineText text={activeStep ? activeStep.content : task.content} />
         </h1>
 
         <CopyTaskButton

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { get, set } from 'idb-keyval';
 import { AccountabilityLog, AppView, BlockerCategory, CategoryFilter, CompletionState, PomodoroSession, Priority, SubTask, Task, TaskCategory, TaskStatus } from '@/types/matrix';
 import { parseTaskInput } from './nlp-parser';
+import { playCompleteSound } from './sound';
 import { configureSync, flushSync, pullRemoteState, resetSync, scheduleSync } from './sync';
 
 const TASKS_STORAGE_KEY = 'focus_matrix_tasks_v1';
@@ -695,6 +696,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     );
     setStore({ tasks: nextTasks });
     persistData(nextTasks, getStore().logs);
+    if (nextState === 'completed') playCompleteSound('task');
     return true;
   },
 
@@ -716,6 +718,10 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   },
 
   toggleSubtask: (taskId, subtaskId) => {
+    const wasDone = getStore()
+      .tasks.find((t) => t.id === taskId)
+      ?.subtasks?.find((s) => s.id === subtaskId)?.completed;
+    if (wasDone === false) playCompleteSound('step');
     const nextTasks = getStore().tasks.map((t) => {
       if (t.id !== taskId) return t;
       return {
