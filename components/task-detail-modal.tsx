@@ -104,12 +104,14 @@ function TaskDetailContent({ task }: { task: Task }) {
   // the main thing you come here to do.
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        return;
-      }
+      // Escape closes from anywhere, typing fields included. Fields that use
+      // Escape for themselves (cancelling a title or step edit) stop it first.
       if (e.key === 'Escape') {
         closeTaskDetailModal();
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (!target || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         return;
       }
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {

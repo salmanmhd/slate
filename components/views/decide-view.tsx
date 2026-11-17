@@ -58,6 +58,7 @@ export function DecideView() {
     () => !tasks.some((t) => t.status === 'inbox' && t.completionState !== 'completed')
   );
   const [inboxWidth, setInboxWidth] = useInboxWidth();
+  const [split, setSplit] = useMatrixSplit();
   const [enlargedQuadrant, setEnlargedQuadrant] = React.useState<Quadrant | null>(null);
 
   const sensors = useSensors(
@@ -266,17 +267,24 @@ export function DecideView() {
             ) : (
               <div className="grid min-h-0 flex-1 grid-cols-[1.25rem_1fr] grid-rows-[1.25rem_1fr] gap-x-1.5 gap-y-1">
                 <div aria-hidden />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3" style={{ gridTemplateColumns: `minmax(0, ${split.x}fr) minmax(0, ${100 - split.x}fr)` }}>
                   <AxisLabel>Urgent</AxisLabel>
                   <AxisLabel>Not urgent</AxisLabel>
                 </div>
 
-                <div className="grid min-h-0 grid-rows-2 gap-3">
+                <div className="grid min-h-0 gap-3" style={{ gridTemplateRows: `minmax(0, ${split.y}fr) minmax(0, ${100 - split.y}fr)` }}>
                   <AxisLabel vertical>Important</AxisLabel>
                   <AxisLabel vertical>Not important</AxisLabel>
                 </div>
 
-                <div className="grid min-h-0 grid-cols-2 grid-rows-2 gap-3">
+                <div
+                  className="relative grid min-h-0 gap-3"
+                  style={{
+                    gridTemplateColumns: `minmax(0, ${split.x}fr) minmax(0, ${100 - split.x}fr)`,
+                    gridTemplateRows: `minmax(0, ${split.y}fr) minmax(0, ${100 - split.y}fr)`,
+                  }}
+                >
+                  <MatrixResizer split={split} onChange={setSplit} />
                   <QuadrantPanel
                     status="do_first"
                     tasks={byStatus.do_first}
@@ -383,6 +391,93 @@ function InboxResizer({ width, onChange }: { width: number; onChange: (next: num
       className="group/resize focus-ring hidden w-4 shrink-0 cursor-col-resize touch-none items-center justify-center lg:flex"
     >
       <span className="h-10 w-0.5 rounded-full bg-border/0 transition-colors group-hover/resize:bg-foreground/30 group-focus-visible/resize:bg-foreground/30" />
+    </div>
+  );
+}
+
+/* ──────── Resizable matrix ──────── */
+
+const MATRIX_SPLIT_KEY = 'slate:matrix-split';
+const MATRIX_SPLIT_DEFAULT = { x: 50, y: 50 };
+const clampSplit = (n: number) => Math.min(80, Math.max(20, Math.round(n)));
+
+/** Where the quadrants meet, as percentages. Kept in this browser only, like the inbox width. */
+function useMatrixSplit(): [{ x: number; y: number }, (next: { x: number; y: number }) => void] {
+  const [split, setSplit] = React.useState(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(MATRIX_SPLIT_KEY) ?? 'null');
+      return saved && typeof saved.x === 'number' && typeof saved.y === 'number'
+        ? { x: clampSplit(saved.x), y: clampSplit(saved.y) }
+        : MATRIX_SPLIT_DEFAULT;
+    } catch {
+      return MATRIX_SPLIT_DEFAULT;
+    }
+  });
+
+  const update = React.useCallback((next: { x: number; y: number }) => {
+    const clamped = { x: clampSplit(next.x), y: clampSplit(next.y) };
+    setSplit(clamped);
+    try {
+      window.localStorage.setItem(MATRIX_SPLIT_KEY, JSON.stringify(clamped));
+    } catch {
+      /* private mode — the split just will not persist */
+    }
+  }, []);
+
+  return [split, update];
+}
+
+/**
+ * One handle where the four quadrants meet. Dragging it moves both the
+ * vertical and the horizontal divide at once. Desktop only.
+ */
+function MatrixResizer({
+  split,
+  onChange,
+}: {
+  split: { x: number; y: number };
+  onChange: (next: { x: number; y: number }) => void;
+}) {
+  const dragging = React.useRef(false);
+
+  const fromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const grid = e.currentTarget.parentElement?.getBoundingClientRect();
+    if (!grid) return;
+    onChange({
+      x: ((e.clientX - grid.left) / grid.width) * 100,
+      y: ((e.clientY - grid.top) / grid.height) * 100,
+    });
+  };
+
+  return (
+    <div
+      role="slider"
+      aria-label="Resize quadrants"
+      aria-valuenow={split.x}
+      aria-valuetext={`${split.x}% by ${split.y}%`}
+      tabIndex={0}
+      title="Drag to resize the quadrants · double-click to reset"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        dragging.current = true;
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) fromPointer(e);
+      }}
+      onPointerUp={() => {
+        dragging.current = false;
+      }}
+      onDoubleClick={() => onChange(MATRIX_SPLIT_DEFAULT)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') onChange({ ...split, x: split.x - 2 });
+        if (e.key === 'ArrowRight') onChange({ ...split, x: split.x + 2 });
+        if (e.key === 'ArrowUp') onChange({ ...split, y: split.y - 2 });
+        if (e.key === 'ArrowDown') onChange({ ...split, y: split.y + 2 });
+      }}
+      style={{ left: `${split.x}%`, top: `${split.y}%` }}
+      className="group/split focus-ring absolute z-10 hidden size-6 -translate-x-1/2 -translate-y-1/2 cursor-move touch-none items-center justify-center rounded-full lg:flex"
+    >
+      <span className="size-2 rounded-full bg-border transition-all group-hover/split:size-3 group-hover/split:bg-foreground/40 group-focus-visible/split:bg-foreground/40" />
     </div>
   );
 }

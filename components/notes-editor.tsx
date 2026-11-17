@@ -107,7 +107,7 @@ export function NotesEditor({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
-              e.stopPropagation();
+              // Blur saves the note; the event then carries on and closes the modal.
               e.currentTarget.blur();
               return;
             }
