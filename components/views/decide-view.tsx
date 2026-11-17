@@ -37,7 +37,6 @@ import {
   Target,
   Maximize2,
   Minimize2,
-  LayoutGrid,
   Moon,
   FileText,
   PanelLeft,
@@ -143,10 +142,6 @@ export function DecideView() {
         {/* Context on the left, sorting progress and view mode on the right */}
         <div className="flex min-h-7 shrink-0 items-center justify-between gap-4 border-b border-border/60 px-1 pb-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <CategorySwitcher />
-          </div>
-
-          <div className="flex items-center gap-3">
             {/* Full page / Hide unorganised toggle */}
             <button
               type="button"
@@ -165,7 +160,10 @@ export function DecideView() {
                 <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-foreground" />
               )}
             </button>
+            <CategorySwitcher />
+          </div>
 
+          <div className="flex items-center gap-3">
             {totalOpen > 0 &&
               (inboxTasks.length === 0 ? (
                 <button
@@ -248,11 +246,11 @@ export function DecideView() {
                   <button
                     type="button"
                     onClick={() => setEnlargedQuadrant(null)}
-                    className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
-                    title="Restore 2x2 grid"
+                    className="focus-ring rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    title="Back to all four quadrants"
+                    aria-label="Back to all four quadrants"
                   >
-                    <LayoutGrid className="size-3.5 text-muted-foreground" />
-                    <span className="hidden sm:inline">Restore 2x2 Grid</span>
+                    <Minimize2 className="size-3.5" />
                   </button>
                 </div>
 
@@ -423,27 +421,37 @@ function QuickAddForm({
   const [value, setValue] = React.useState(initial);
   const [added, setAdded] = React.useState(0);
 
+  const submit = () => {
+    if (!value.trim()) return;
+    onAdd(value.trim());
+    setValue('');
+    setAdded((n) => n + 1);
+  };
+
+  // No box, no border: just your words in the middle of a faded page.
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[18vh]">
-      <div className="fixed inset-0 bg-background/40 backdrop-blur-sm" onClick={onClose} />
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-label="Add a task"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!value.trim()) return;
-          onAdd(value.trim());
-          setValue('');
-          setAdded((n) => n + 1);
-        }}
-        className="glass animate-rise relative w-full max-w-xl rounded-2xl p-2"
-      >
-        <input
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <div className="fixed inset-0 bg-background/85 backdrop-blur-md" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-label="Add a task" className="animate-rise relative w-full max-w-2xl text-center">
+        <textarea
           autoFocus
+          rows={1}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          ref={(el) => {
+            if (!el) return;
+            el.style.height = 'auto';
+            el.style.height = `${el.scrollHeight}px`;
+          }}
+          onFocus={(e) => {
+            const end = e.currentTarget.value.length;
+            e.currentTarget.setSelectionRange(end, end);
+          }}
+          onChange={(e) => setValue(e.target.value.replace(/\n/g, ' '))}
           onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
+            }
             if (e.key === 'Escape') {
               e.stopPropagation();
               onClose();
@@ -451,13 +459,12 @@ function QuickAddForm({
           }}
           placeholder="Add a task…"
           aria-label="Task"
-          autoComplete="off"
-          className="w-full rounded-xl bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+          className="w-full resize-none overflow-hidden border-0 bg-transparent text-center font-heading text-2xl leading-snug font-semibold text-foreground placeholder:text-muted-foreground/40 focus:outline-none sm:text-3xl"
         />
-        <p className="px-4 pb-1.5 text-[11px] text-muted-foreground">
+        <p className="mt-4 text-xs text-muted-foreground">
           {added > 0 ? `${added} added to Unorganised · ` : ''}Enter to add · Esc to close
         </p>
-      </form>
+      </div>
     </div>
   );
 }
@@ -517,19 +524,6 @@ function QuadrantPanel({
   onToggleEnlarge?: (status: Quadrant) => void;
 }) {
   const meta = QUADRANTS[status];
-  // View-only: Deadline reorders what you see, never the saved manual order.
-  const [sort, setSort] = React.useState<'manual' | 'deadline'>('manual');
-  const visible = React.useMemo(
-    () =>
-      sort === 'manual'
-        ? tasks
-        : [...tasks].sort(
-            (a, b) =>
-              (a.parsedDate ? Date.parse(a.parsedDate) : Infinity) -
-              (b.parsedDate ? Date.parse(b.parsedDate) : Infinity)
-          ),
-    [tasks, sort]
-  );
   const { setNodeRef, isOver } = useDroppable({
     id: status,
     data: { type: 'quadrant', status },
@@ -566,19 +560,6 @@ function QuadrantPanel({
           {tasks.length}
         </span>
 
-        {status !== 'eliminate' && tasks.length > 1 && (
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as 'manual' | 'deadline')}
-            onPointerDown={(e) => e.stopPropagation()}
-            aria-label={`Sort ${meta.title}`}
-            className="focus-ring ml-auto cursor-pointer rounded-md bg-transparent px-1 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none"
-          >
-            <option value="manual">Manual</option>
-            <option value="deadline">Deadline</option>
-          </select>
-        )}
-
         {onToggleEnlarge && (
           <button
             type="button"
@@ -586,7 +567,7 @@ function QuadrantPanel({
               e.stopPropagation();
               onToggleEnlarge(status);
             }}
-            className={`focus-ring ${status !== 'eliminate' && tasks.length > 1 ? '' : 'ml-auto'} rounded-md p-1 text-muted-foreground/50 opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground`}
+            className={`focus-ring ml-auto rounded-md p-1 text-muted-foreground/50 opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground`}
             title={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
             aria-label={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
           >
@@ -596,8 +577,8 @@ function QuadrantPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-        <SortableContext items={visible.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          {visible.map((task) => (
+        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          {tasks.map((task) => (
             <TaskCard key={task.id} task={task} accentDot={meta.dot} showSteps={isEnlarged} />
           ))}
         </SortableContext>
@@ -672,16 +653,16 @@ function TaskCard({
       {...attributes}
       {...listeners}
       onClick={() => openTaskDetailModal(task.id)}
-      className={`group relative cursor-grab border-b border-border/40 px-1.5 py-1.5 transition-colors last:border-b-0 hover:rounded-lg hover:bg-muted/50 active:cursor-grabbing ${
+      className={`group relative cursor-grab border-b border-border/40 px-1.5 py-2.5 transition-colors last:border-b-0 hover:rounded-lg hover:bg-muted/50 active:cursor-grabbing ${
         isCompleted ? 'opacity-60' : ''
       }`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-start gap-2">
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={handleToggle}
-          className="focus-ring shrink-0 rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
+          className="focus-ring mt-0.5 shrink-0 rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
           title={hasOpenSteps ? 'Finish the steps first' : 'Mark done'}
           aria-label={hasOpenSteps ? 'Finish the steps first' : 'Mark done'}
         >
@@ -695,7 +676,7 @@ function TaskCard({
         </button>
 
         <p
-          className={`min-w-0 flex-1 truncate text-[13px] leading-snug font-medium select-none ${
+          className={`min-w-0 flex-1 break-words whitespace-pre-wrap text-[13px] leading-snug font-medium select-none ${
             isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
           }`}
           title={task.content}
