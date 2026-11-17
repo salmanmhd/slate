@@ -653,11 +653,11 @@ function TaskCard({
       {...attributes}
       {...listeners}
       onClick={() => openTaskDetailModal(task.id)}
-      className={`group relative cursor-grab border-b border-border/40 px-1.5 py-2.5 transition-colors last:border-b-0 hover:rounded-lg hover:bg-muted/50 active:cursor-grabbing ${
+      className={`group relative cursor-grab rounded-xl px-2.5 py-2.5 transition-colors hover:bg-muted/40 active:cursor-grabbing ${
         isCompleted ? 'opacity-60' : ''
       }`}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
@@ -676,12 +676,14 @@ function TaskCard({
         </button>
 
         <p
-          className={`min-w-0 flex-1 break-words whitespace-pre-wrap text-[13px] leading-snug font-medium select-none ${
-            isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
-          }`}
+          className={`min-w-0 flex-1 break-words whitespace-pre-wrap leading-relaxed select-none ${
+            showSteps ? 'text-[15px]' : 'text-sm'
+          } ${isCompleted ? 'text-muted-foreground line-through' : 'text-foreground/90'}`}
           title={task.content}
         >
-          <InlineText text={task.content} />
+          {/* A reading column: long tasks wrap into short lines instead of one endless one */}
+          <span className="block max-w-3xl">
+            <InlineText text={task.content} tone="soft" />
           {stuckCount > 0 && (
             <span
               className="ml-1.5 inline-block size-1.5 rounded-full bg-amber-500 align-middle"
@@ -689,10 +691,11 @@ function TaskCard({
               aria-label={`Stuck ${stuckCount} times`}
             />
           )}
+          </span>
         </p>
 
         {task.notes && (
-          <FileText className="size-3 shrink-0 text-muted-foreground/50" aria-label="Has notes" />
+          <FileText className="mt-1 size-3 shrink-0 text-muted-foreground/40" aria-label="Has notes" />
         )}
 
         {activeCategory === 'all' && (
@@ -700,15 +703,15 @@ function TaskCard({
         )}
 
         {subtasks.length > 0 && (
-          <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+          <span className="mt-0.5 w-8 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
             {doneSubs}/{subtasks.length}
           </span>
         )}
 
         {(task.parsedDate || deferred) && (
           <span
-            className={`shrink-0 text-right text-[11px] whitespace-nowrap ${
-              overdue ? 'font-semibold text-q-do-first' : 'text-muted-foreground'
+            className={`mt-0.5 shrink-0 text-right text-[11px] whitespace-nowrap ${
+              overdue ? 'font-semibold text-q-do-first' : 'text-muted-foreground/60'
             }`}
             title={deferred ? 'Hidden from Focus until this time' : undefined}
           >
@@ -723,16 +726,21 @@ function TaskCard({
           </span>
         )}
 
-        {accentDot && <span className={`size-1 shrink-0 rounded-full ${accentDot} opacity-70`} aria-hidden />}
+        {accentDot && (
+          <span
+            className={`mt-2 size-1 shrink-0 rounded-full ${accentDot} opacity-0 transition-opacity group-hover:opacity-70`}
+            aria-hidden
+          />
+        )}
 
         <CopyTaskButton task={task} className="opacity-0 group-hover:opacity-100" />
 
-        <ChevronRight className="size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
+        <ChevronRight className="mt-1 size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
       </div>
 
       {/* Enlarged quadrants have the room, so the steps come out of hiding */}
       {showSteps && subtasks.length > 0 && (
-        <ul className="mt-1 space-y-0.5 pl-5.5">
+        <ul className="mt-2 max-w-3xl space-y-1.5 pl-6.5">
           {subtasks.map((sub) => (
             <li key={sub.id} className="flex items-start gap-1.5">
               <button
@@ -755,11 +763,11 @@ function TaskCard({
                 )}
               </button>
               <span
-                className={`min-w-0 flex-1 break-words text-xs leading-snug select-none ${
-                  sub.completed ? 'text-muted-foreground/50 line-through' : 'text-foreground/80'
+                className={`min-w-0 flex-1 break-words text-[13px] leading-relaxed select-none ${
+                  sub.completed ? 'text-muted-foreground/50 line-through' : 'text-muted-foreground'
                 }`}
               >
-                <InlineText text={sub.content} />
+                <InlineText text={sub.content} tone="soft" />
               </span>
             </li>
           ))}
