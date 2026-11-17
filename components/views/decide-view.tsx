@@ -25,11 +25,24 @@ import { Task, TaskStatus } from '@/types/matrix';
 import { formatFriendlyDate } from '@/lib/nlp-parser';
 import { QUADRANTS, INBOX_META } from '@/components/quadrants';
 import { CategorySwitcher, CategoryMark } from '@/components/category-switcher';
-import { TaskMeta } from '@/components/task-meta';
 import { CopyTaskButton } from '@/components/copy-task-button';
 import { InlineText } from '@/components/inline-text';
 import { useNow, isOverdue } from '@/hooks/use-now';
-import { Calendar, Check, Circle, ChevronRight, Target, Maximize2, Minimize2, LayoutGrid } from 'lucide-react';
+import { isDeferred, formatDeferLabel } from '@/lib/defer';
+import {
+  Calendar,
+  Check,
+  Circle,
+  ChevronRight,
+  Target,
+  Maximize2,
+  Minimize2,
+  LayoutGrid,
+  Moon,
+  FileText,
+  PanelLeft,
+  PanelLeftClose,
+} from 'lucide-react';
 
 type Quadrant = Exclude<TaskStatus, 'inbox'>;
 const QUADRANT_IDS: TaskStatus[] = ['inbox', 'do_first', 'schedule', 'delegate', 'eliminate'];
@@ -131,7 +144,6 @@ export function DecideView() {
         <div className="flex min-h-7 shrink-0 items-center justify-between gap-4 border-b border-border/60 px-1 pb-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <CategorySwitcher />
-            <QuickAdd />
           </div>
 
           <div className="flex items-center gap-3">
@@ -148,7 +160,7 @@ export function DecideView() {
               aria-label={hideInbox ? 'Show unorganised tasks' : 'Hide unorganised tasks'}
               aria-pressed={!hideInbox}
             >
-              <INBOX_META.Icon className="size-4" />
+              {hideInbox ? <PanelLeft className="size-4" /> : <PanelLeftClose className="size-4" />}
               {hideInbox && inboxTasks.length > 0 && (
                 <span className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-foreground" />
               )}
@@ -188,10 +200,7 @@ export function DecideView() {
             <>
               <section className="card-depth flex min-h-80 shrink-0 flex-col rounded-2xl border border-border/80 bg-card p-2.5 lg:min-h-0 lg:w-[var(--inbox-w)] animate-fade">
                 <div className="mb-2.5 flex shrink-0 items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <INBOX_META.Icon className="size-3.5 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold text-foreground">{INBOX_META.title}</h3>
-                  </div>
+                  <h3 className="text-sm font-semibold text-foreground">{INBOX_META.title}</h3>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
                     {inboxTasks.length}
                   </span>
@@ -301,6 +310,8 @@ export function DecideView() {
         </div>
       </div>
 
+      <QuickAddModal />
+
       <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
         {activeTask && <DragPreview task={activeTask} />}
       </DragOverlay>
@@ -380,30 +391,74 @@ function InboxResizer({ width, onChange }: { width: number; onChange: (next: num
 
 /* ──────── Axis labels ──────── */
 
-/** Add straight into Unorganised without a trip to Capture. Same parser as Capture, so dates like "fri 3pm" still work. */
-function QuickAdd() {
-  const { addTask, activeCategory } = useMatrixStore();
-  const [value, setValue] = React.useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!value.trim()) return;
-    addTask(value.trim(), 'inbox', undefined, undefined, activeCategory === 'all' ? undefined : activeCategory);
-    setValue('');
-  };
+/**
+ * Typing anywhere on Decide opens this: one clean field, Enter adds to
+ * Unorganised and keeps it open for the next one, Escape closes. Same parser
+ * as Capture, so "call bank fri 3pm" still gets its deadline.
+ */
+function QuickAddModal() {
+  const { quickAddDraft, closeQuickAdd, addTask, activeCategory } = useMatrixStore();
+  if (quickAddDraft === null) return null;
 
   return (
-    <form onSubmit={handleSubmit} className="flex min-w-0 max-w-sm flex-1 items-center">
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="+ Add a task…"
+    <QuickAddForm
+      initial={quickAddDraft}
+      onClose={closeQuickAdd}
+      onAdd={(text) =>
+        addTask(text, 'inbox', undefined, undefined, activeCategory === 'all' ? undefined : activeCategory)
+      }
+    />
+  );
+}
+
+function QuickAddForm({
+  initial,
+  onClose,
+  onAdd,
+}: {
+  initial: string;
+  onClose: () => void;
+  onAdd: (text: string) => void;
+}) {
+  const [value, setValue] = React.useState(initial);
+  const [added, setAdded] = React.useState(0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[18vh]">
+      <div className="fixed inset-0 bg-background/40 backdrop-blur-sm" onClick={onClose} />
+      <form
+        role="dialog"
+        aria-modal="true"
         aria-label="Add a task"
-        autoComplete="off"
-        className="w-full rounded-lg border border-border/50 bg-card/60 px-2.5 py-1 text-xs text-foreground transition-colors placeholder:text-muted-foreground/60 focus:border-foreground/30 focus:bg-card focus:outline-none"
-      />
-    </form>
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!value.trim()) return;
+          onAdd(value.trim());
+          setValue('');
+          setAdded((n) => n + 1);
+        }}
+        className="glass animate-rise relative w-full max-w-xl rounded-2xl p-2"
+      >
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              onClose();
+            }
+          }}
+          placeholder="Add a task…"
+          aria-label="Task"
+          autoComplete="off"
+          className="w-full rounded-xl bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
+        />
+        <p className="px-4 pb-1.5 text-[11px] text-muted-foreground">
+          {added > 0 ? `${added} added to Unorganised · ` : ''}Enter to add · Esc to close
+        </p>
+      </form>
+    </div>
   );
 }
 
@@ -430,7 +485,7 @@ function InboxList({ tasks }: { tasks: Task[] }) {
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-0 flex-1 space-y-1.5 overflow-y-auto rounded-xl border p-2 transition-colors ${
+      className={`min-h-0 flex-1 overflow-y-auto rounded-xl border p-1 transition-colors ${
         isOver ? 'border-foreground/30 bg-muted/40' : 'border-border/50 bg-background/40'
       }`}
     >
@@ -462,6 +517,19 @@ function QuadrantPanel({
   onToggleEnlarge?: (status: Quadrant) => void;
 }) {
   const meta = QUADRANTS[status];
+  // View-only: Deadline reorders what you see, never the saved manual order.
+  const [sort, setSort] = React.useState<'manual' | 'deadline'>('manual');
+  const visible = React.useMemo(
+    () =>
+      sort === 'manual'
+        ? tasks
+        : [...tasks].sort(
+            (a, b) =>
+              (a.parsedDate ? Date.parse(a.parsedDate) : Infinity) -
+              (b.parsedDate ? Date.parse(b.parsedDate) : Infinity)
+          ),
+    [tasks, sort]
+  );
   const { setNodeRef, isOver } = useDroppable({
     id: status,
     data: { type: 'quadrant', status },
@@ -498,6 +566,19 @@ function QuadrantPanel({
           {tasks.length}
         </span>
 
+        {status !== 'eliminate' && tasks.length > 1 && (
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'manual' | 'deadline')}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={`Sort ${meta.title}`}
+            className="focus-ring ml-auto cursor-pointer rounded-md bg-transparent px-1 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none"
+          >
+            <option value="manual">Manual</option>
+            <option value="deadline">Deadline</option>
+          </select>
+        )}
+
         {onToggleEnlarge && (
           <button
             type="button"
@@ -505,7 +586,7 @@ function QuadrantPanel({
               e.stopPropagation();
               onToggleEnlarge(status);
             }}
-            className="focus-ring ml-auto rounded-md p-1 text-muted-foreground/50 opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground"
+            className={`focus-ring ${status !== 'eliminate' && tasks.length > 1 ? '' : 'ml-auto'} rounded-md p-1 text-muted-foreground/50 opacity-0 transition-opacity group-hover/quadrant:opacity-100 focus-visible:opacity-100 hover:bg-muted hover:text-foreground`}
             title={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
             aria-label={isEnlarged ? 'Restore 2x2 grid view' : `Enlarge ${meta.title}`}
           >
@@ -514,9 +595,9 @@ function QuadrantPanel({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
-        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          {tasks.map((task) => (
+      <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <SortableContext items={visible.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          {visible.map((task) => (
             <TaskCard key={task.id} task={task} accentDot={meta.dot} showSteps={isEnlarged} />
           ))}
         </SortableContext>
@@ -550,8 +631,10 @@ function TaskCard({
     toggleSubtask,
     setTaskCategory,
     activeCategory,
+    logs,
   } = useMatrixStore();
   const [blockedHint, setBlockedHint] = React.useState(false);
+  const now = useNow();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -565,10 +648,12 @@ function TaskCard({
   };
 
   const isCompleted = task.completionState === 'completed';
-  const overdue = isOverdue(task.parsedDate, useNow());
+  const overdue = isOverdue(task.parsedDate, now);
+  const deferred = isDeferred(task, now);
   const subtasks = task.subtasks || [];
   const doneSubs = subtasks.filter((s) => s.completed).length;
   const hasOpenSteps = doneSubs < subtasks.length;
+  const stuckCount = logs.filter((l) => l.taskId === task.id).length;
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -578,6 +663,8 @@ function TaskCard({
     }
   };
 
+  // One line per task: title on the left, the same facts in the same columns
+  // on the right, so a full quadrant scans like a list instead of a pile.
   return (
     <div
       ref={setNodeRef}
@@ -585,16 +672,16 @@ function TaskCard({
       {...attributes}
       {...listeners}
       onClick={() => openTaskDetailModal(task.id)}
-      className={`group relative flex cursor-grab flex-col gap-1 rounded-xl border bg-card px-2.5 py-2 shadow-xs transition-all hover:-translate-y-px hover:border-foreground/30 hover:shadow-sm active:cursor-grabbing ${
-        isCompleted ? 'border-border/40 opacity-60' : overdue ? 'border-q-do-first/40' : 'border-border/80'
+      className={`group relative cursor-grab border-b border-border/40 px-1.5 py-1.5 transition-colors last:border-b-0 hover:rounded-lg hover:bg-muted/50 active:cursor-grabbing ${
+        isCompleted ? 'opacity-60' : ''
       }`}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={handleToggle}
-          className="focus-ring mt-0.5 shrink-0 rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
+          className="focus-ring shrink-0 rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
           title={hasOpenSteps ? 'Finish the steps first' : 'Mark done'}
           aria-label={hasOpenSteps ? 'Finish the steps first' : 'Mark done'}
         >
@@ -608,34 +695,63 @@ function TaskCard({
         </button>
 
         <p
-          className={`flex-1 break-words text-[13px] leading-snug font-medium select-none ${
+          className={`min-w-0 flex-1 truncate text-[13px] leading-snug font-medium select-none ${
             isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'
           }`}
           title={task.content}
         >
           <InlineText text={task.content} />
+          {stuckCount > 0 && (
+            <span
+              className="ml-1.5 inline-block size-1.5 rounded-full bg-amber-500 align-middle"
+              title={`Stuck ${stuckCount}×`}
+              aria-label={`Stuck ${stuckCount} times`}
+            />
+          )}
         </p>
 
+        {task.notes && (
+          <FileText className="size-3 shrink-0 text-muted-foreground/50" aria-label="Has notes" />
+        )}
+
         {activeCategory === 'all' && (
-          <span className="mt-0.5 flex shrink-0">
-            <CategoryMark
-              category={task.category}
-              onCycle={(next) => setTaskCategory(task.id, next)}
-            />
+          <CategoryMark category={task.category} onCycle={(next) => setTaskCategory(task.id, next)} />
+        )}
+
+        {subtasks.length > 0 && (
+          <span className="w-8 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+            {doneSubs}/{subtasks.length}
           </span>
         )}
 
-        <CopyTaskButton
-          task={task}
-          className="mt-0.5 opacity-0 group-hover:opacity-100"
-        />
+        {(task.parsedDate || deferred) && (
+          <span
+            className={`shrink-0 text-right text-[11px] whitespace-nowrap ${
+              overdue ? 'font-semibold text-q-do-first' : 'text-muted-foreground'
+            }`}
+            title={deferred ? 'Hidden from Focus until this time' : undefined}
+          >
+            {task.parsedDate ? (
+              formatFriendlyDate(task.parsedDate)
+            ) : (
+              <span className="inline-flex items-center gap-0.5">
+                <Moon className="size-2.5" />
+                {formatDeferLabel(task.deferUntil as string, now)}
+              </span>
+            )}
+          </span>
+        )}
 
-        <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
+        {accentDot && <span className={`size-1 shrink-0 rounded-full ${accentDot} opacity-70`} aria-hidden />}
+
+        <CopyTaskButton task={task} className="opacity-0 group-hover:opacity-100" />
+
+        <ChevronRight className="size-3 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground" />
       </div>
 
       {/* Enlarged quadrants have the room, so the steps come out of hiding */}
       {showSteps && subtasks.length > 0 && (
-        <ul className="space-y-0.5 pl-5.5">
+        <ul className="mt-1 space-y-0.5 pl-5.5">
           {subtasks.map((sub) => (
             <li key={sub.id} className="flex items-start gap-1.5">
               <button
@@ -669,13 +785,11 @@ function TaskCard({
         </ul>
       )}
 
-      {blockedHint ? (
-        <p className="pt-0.5 text-[10px] font-medium text-q-do-first">
+      {blockedHint && (
+        <p className="pt-0.5 pl-5.5 text-[10px] font-medium text-q-do-first">
           Finish its {subtasks.length - doneSubs} open{' '}
           {subtasks.length - doneSubs === 1 ? 'step' : 'steps'} first
         </p>
-      ) : (
-        <TaskMeta task={task} accentDot={accentDot} />
       )}
     </div>
   );

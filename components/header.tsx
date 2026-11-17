@@ -23,6 +23,8 @@ export function Header() {
     tasks,
     appendCaptureDraft,
     stuckNextStep,
+    quickAddDraft,
+    openQuickAdd,
     activeModalTaskId,
     accountabilityModalTask,
   } = useMatrixStore();
@@ -49,7 +51,7 @@ export function Header() {
       }
 
       // A modal owns the keyboard while it is open.
-      if (activeModalTaskId || accountabilityModalTask || stuckNextStep) return;
+      if (activeModalTaskId || accountabilityModalTask || stuckNextStep || quickAddDraft !== null) return;
       // The timer page owns Space; don't let it also type into Capture.
       if (activeView === 'timer' && (e.code === 'Space' || e.key === ' ')) return;
 
@@ -64,6 +66,13 @@ export function Header() {
       // a thought worth catching, so it lands in Capture.
       if (activeView === 'focus') return;
 
+      // Decide keeps you on the board: typing opens a small add box over it.
+      if (activeView === 'decide' && e.key.length === 1 && e.key.trim()) {
+        e.preventDefault();
+        openQuickAdd(e.key);
+        return;
+      }
+
       if (e.key.length === 1) {
         e.preventDefault();
         setActiveView('capture');
@@ -73,7 +82,7 @@ export function Header() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeView, activeModalTaskId, accountabilityModalTask, stuckNextStep, setActiveView, appendCaptureDraft]);
+  }, [activeView, activeModalTaskId, accountabilityModalTask, stuckNextStep, quickAddDraft, openQuickAdd, setActiveView, appendCaptureDraft]);
 
   // The inbox is never filtered, so this counts everything unsorted.
   const inboxCount = tasks.filter(

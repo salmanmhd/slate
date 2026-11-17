@@ -48,6 +48,10 @@ interface MatrixState {
   /** Set right after a stuck log, so the app can hand over one concrete next move. */
   stuckNextStep: StuckNextStep | null;
   closeStuckNextStep: () => void;
+  /** Non-null while the Decide quick-add modal is open; holds its draft. */
+  quickAddDraft: string | null;
+  openQuickAdd: (initial?: string) => void;
+  closeQuickAdd: () => void;
 
   /**
    * Session work timer. Held here rather than in FocusView so glancing at the
@@ -261,6 +265,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
   accountabilityModalTask: null,
   accountabilityModalResolutionDefault: 'rescheduled',
   stuckNextStep: null,
+  quickAddDraft: null,
 
   timer: INITIAL_TIMER,
   sessions: [],
@@ -824,6 +829,14 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
     setStore({ stuckNextStep: null });
   },
 
+  openQuickAdd: (initial = '') => {
+    setStore({ quickAddDraft: initial });
+  },
+
+  closeQuickAdd: () => {
+    setStore({ quickAddDraft: null });
+  },
+
   recordAccountability: (taskId, category, reason, resolution, newDueDate) => {
     const task = getStore().tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -904,6 +917,7 @@ export const useMatrixStore = create<MatrixState>((setStore, getStore) => ({
       activeModalTaskId: null,
       accountabilityModalTask: null,
       stuckNextStep: null,
+      quickAddDraft: null,
       pendingDeleteTaskId: null,
       captureDraft: '',
     });
