@@ -146,6 +146,16 @@ function TaskDetailContent({ task }: { task: Task }) {
       .filter(Boolean);
     if (lines.length === 0) return;
     lines.forEach((line) => addSubtask(task.id, line, 'normal'));
+
+    // A single "3. do the thing" goes straight to position 3. A pasted list
+    // keeps its own order at the end, so it never interleaves with what is there.
+    const position = newSubtask.trim().match(/^(\d+)[.)]\s/);
+    if (lines.length === 1 && position) {
+      const { tasks } = useMatrixStore.getState();
+      const count = tasks.find((t) => t.id === task.id)?.subtasks?.length ?? 0;
+      const target = Math.min(Math.max(Number(position[1]) - 1, 0), count - 1);
+      if (target < count - 1) reorderSubtasks(task.id, count - 1, target);
+    }
     setNewSubtask('');
   };
 
@@ -326,7 +336,7 @@ function TaskDetailContent({ task }: { task: Task }) {
                 </button>
               </div>
               <p className="mt-1.5 px-1 text-[11px] text-muted-foreground/60">
-                Enter to add · Shift+Enter for a new line · each line becomes its own step
+                Enter to add · Shift+Enter for a new line · start with “3.” to place it at step 3
               </p>
             </form>
           </div>
